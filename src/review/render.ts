@@ -26,8 +26,14 @@ export function renderFindingComment(finding: Finding): string {
   if (suggestion) {
     parts.push('', '```suggestion', suggestion, '```')
   } else if (finding.suggestion?.trim()) {
-    // 코드로 쓸 수 없는 제안은 버리지 않고 본문에 서술로 남긴다
-    parts.push('', `**제안:** ${finding.suggestion.trim().replace(/\n+/g, ' ')}`)
+    // 제안 블록으로 쓸 수 없는 내용도 버리지 않는다.
+    // 코드처럼 보이면 일반 코드블록으로(자동 적용 버튼 없이), 설명문이면 한 줄로 남긴다.
+    const raw = stripFence(finding.suggestion)
+    if (looksLikeCode(raw)) {
+      parts.push('', '**제안** (직접 적용해야 한다):', '```', raw.replace(/^\n+/, ''), '```')
+    } else {
+      parts.push('', `**제안:** ${raw.trim().replace(/\s*\n+\s*/g, ' ')}`)
+    }
   }
 
   if (finding.confidence < 0.7) {
@@ -57,6 +63,18 @@ const PROSE_LEAD = /^\s*(?:[-*]\s*)?[가-힣]/
  *
  * 또한 여러 줄에 걸친 지적은 교체 범위가 모호하므로 제안을 달지 않는다.
  */
+/**
+ * 제안 블록으로는 못 쓰지만 코드로 보여줄 가치는 있는지.
+ * 여러 줄이거나 코드 구두점이 있고, 설명문 신호가 없으면 코드로 본다.
+ */
+export function looksLikeCode(text: string): boolean {
+  const trimmed = text.trim()
+  if (!trimmed) return false
+  if (KOREAN_SENTENCE_END.test(trimmed)) return false
+  if (PROSE_LEAD.test(trimmed)) return false
+  return trimmed.includes('\n') || /[{};=()]/.test(trimmed)
+}
+
 export function usableSuggestion(finding: Finding): string | undefined {
   // 들여쓰기가 곧 교체될 코드의 일부라 앞쪽 공백을 잘라내면 안 된다
   const raw = finding.suggestion

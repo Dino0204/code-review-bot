@@ -55,6 +55,20 @@ test('쓸 수 없는 제안은 버리지 않고 본문에 서술로 남긴다', 
   assert.ok(body.includes('**제안:** 재시도 사이에 지연 시간을 추가하세요.'), body)
 })
 
+// 제안 블록으로 못 쓰는 코드를 한 줄로 뭉개면 읽을 수 없게 된다
+test('제안 블록으로 못 쓰는 여러 줄 코드는 일반 코드블록으로 남긴다', () => {
+  const code = 'function f(): number {\n  return 1\n}'
+  const body = renderFindingComment(finding({ suggestion: code, line: 3, endLine: 7 }))
+  assert.ok(!body.includes('```suggestion'), body)
+  assert.ok(body.includes('**제안** (직접 적용해야 한다):'), body)
+  assert.ok(body.includes('```\nfunction f(): number {\n  return 1\n}\n```'), body)
+})
+
+test('설명문 제안은 한 줄로 정리해 남긴다', () => {
+  const body = renderFindingComment(finding({ suggestion: '지연을\n추가하세요.' }))
+  assert.ok(body.includes('**제안:** 지연을 추가하세요.'), body)
+})
+
 test('쓸 수 있는 제안은 suggestion 블록으로 렌더링한다', () => {
   const body = renderFindingComment(finding({ suggestion: 'const x = 1' }))
   assert.ok(body.includes('```suggestion\nconst x = 1\n```'), body)

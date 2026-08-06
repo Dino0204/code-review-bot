@@ -48743,7 +48743,12 @@ function renderFindingComment(finding) {
   if (suggestion) {
     parts.push("", "```suggestion", suggestion, "```");
   } else if (finding.suggestion?.trim()) {
-    parts.push("", `**\uC81C\uC548:** ${finding.suggestion.trim().replace(/\n+/g, " ")}`);
+    const raw = stripFence(finding.suggestion);
+    if (looksLikeCode(raw)) {
+      parts.push("", "**\uC81C\uC548** (\uC9C1\uC811 \uC801\uC6A9\uD574\uC57C \uD55C\uB2E4):", "```", raw.replace(/^\n+/, ""), "```");
+    } else {
+      parts.push("", `**\uC81C\uC548:** ${raw.trim().replace(/\s*\n+\s*/g, " ")}`);
+    }
   }
   if (finding.confidence < 0.7) {
     parts.push("", `<sub>\uD655\uC2E0\uB3C4 ${Math.round(finding.confidence * 100)}% \u2014 \uC624\uD0D0\uC77C \uC218 \uC788\uB2E4.</sub>`);
@@ -48756,6 +48761,13 @@ function stripFence(code) {
 }
 var KOREAN_SENTENCE_END = /(합니다|하세요|해야\s|입니다|세요|십시오|같습니다|필요합니다)/;
 var PROSE_LEAD = /^\s*(?:[-*]\s*)?[가-힣]/;
+function looksLikeCode(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (KOREAN_SENTENCE_END.test(trimmed)) return false;
+  if (PROSE_LEAD.test(trimmed)) return false;
+  return trimmed.includes("\n") || /[{};=()]/.test(trimmed);
+}
 function usableSuggestion(finding) {
   const raw = finding.suggestion;
   if (!raw?.trim()) return void 0;
