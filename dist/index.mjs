@@ -26838,7 +26838,9 @@ var DEFAULT_CONFIG = {
   baseUrl: "https://api.z.ai/api/paas/v4",
   language: "ko",
   temperature: 0.2,
-  maxOutputTokens: 8192,
+  // thinking을 켜면 reasoning 토큰이 max_tokens를 함께 소비한다(관측: 128토큰 응답 중 113이 reasoning).
+  // 부족하면 finish_reason=length로 JSON이 잘리므로 넉넉히 잡는다. 쓰지 않은 토큰에는 비용이 없다.
+  maxOutputTokens: 24576,
   thinking: true,
   maxPromptChars: 32e4,
   maxFiles: 40,
@@ -27029,6 +27031,13 @@ var GlmClient = class {
     const first = await this.chat(messages, { ...options, json: true });
     const parsed = tryParse(first.content, schema);
     if (parsed.ok) return parsed.value;
+    if (first.finishReason === "length") {
+      throw new GlmError(
+        `GLM \uC751\uB2F5\uC774 max_tokens\uC5D0 \uAC78\uB824 \uC798\uB838\uB2E4 (${parsed.error}). maxOutputTokens\uB97C \uC62C\uB9AC\uAC70\uB098 maxFiles\uB97C \uC904\uC5EC\uC57C \uD55C\uB2E4.`,
+        void 0,
+        "length"
+      );
+    }
     log.warn(`GLM JSON \uD30C\uC2F1 \uC2E4\uD328 \u2014 \uAD50\uC815 \uC694\uCCAD: ${parsed.error}`);
     const repaired = await this.chat(
       [

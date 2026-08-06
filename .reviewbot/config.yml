@@ -6,7 +6,7 @@ model: glm-4.7-flash # 무료 티어. 더 깊은 리뷰가 필요하면 glm-4.7-
 language: ko
 temperature: 0.2
 thinking: true # chain-of-thought 활성화 (품질↑, 지연시간↑)
-maxOutputTokens: 8192
+maxOutputTokens: 24576 # reasoning 토큰도 여기에 포함된다. 부족하면 응답이 잘린다
 
 # --- 리뷰 범위 ---
 maxFiles: 40 # 변경량이 큰 파일부터 이 개수까지만 리뷰

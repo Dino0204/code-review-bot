@@ -60,7 +60,9 @@ export const DEFAULT_CONFIG: BotConfig = {
   baseUrl: 'https://api.z.ai/api/paas/v4',
   language: 'ko',
   temperature: 0.2,
-  maxOutputTokens: 8192,
+  // thinking을 켜면 reasoning 토큰이 max_tokens를 함께 소비한다(관측: 128토큰 응답 중 113이 reasoning).
+  // 부족하면 finish_reason=length로 JSON이 잘리므로 넉넉히 잡는다. 쓰지 않은 토큰에는 비용이 없다.
+  maxOutputTokens: 24576,
   thinking: true,
 
   maxPromptChars: 320_000,

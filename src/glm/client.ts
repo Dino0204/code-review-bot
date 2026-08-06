@@ -138,6 +138,15 @@ export class GlmClient {
     const parsed = tryParse(first.content, schema)
     if (parsed.ok) return parsed.value
 
+    // max_tokens에 걸려 잘린 경우는 교정을 요청해도 같은 곳에서 다시 잘린다
+    if (first.finishReason === 'length') {
+      throw new GlmError(
+        `GLM 응답이 max_tokens에 걸려 잘렸다 (${parsed.error}). maxOutputTokens를 올리거나 maxFiles를 줄여야 한다.`,
+        undefined,
+        'length',
+      )
+    }
+
     log.warn(`GLM JSON 파싱 실패 — 교정 요청: ${parsed.error}`)
     const repaired = await this.chat(
       [
