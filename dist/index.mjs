@@ -26985,8 +26985,9 @@ var GlmError = class extends Error {
   retryAfterMs;
 };
 var RETRIABLE_STATUS = /* @__PURE__ */ new Set([408, 409, 429, 500, 502, 503, 504]);
-function isCapacityError(error52) {
+function shouldTryNextModel(error52) {
   if (!(error52 instanceof GlmError)) return false;
+  if (error52.retriable) return true;
   if (error52.status === 429 || error52.status === 503) return true;
   return ["1302", "1305", "1113"].includes(String(error52.code));
 }
@@ -27008,7 +27009,7 @@ var GlmClient = class {
     this.model = options.model;
     this.lastUsedModel = options.model;
     this.fallbackModels = (options.fallbackModels ?? []).filter((model) => model !== options.model);
-    this.timeoutMs = options.timeoutMs ?? 18e4;
+    this.timeoutMs = options.timeoutMs ?? 3e5;
     this.maxRetries = options.maxRetries ?? 4;
   }
   async chat(messages, options = {}) {
@@ -27035,7 +27036,7 @@ var GlmClient = class {
         return result;
       } catch (error52) {
         lastError = error52;
-        if (!isCapacityError(error52)) throw error52;
+        if (!shouldTryNextModel(error52)) throw error52;
         if (index < models.length - 1) {
           log.warn(`${model} \uC0AC\uC6A9 \uBD88\uAC00(${error52.message}) \u2014 \uB2E4\uC74C \uBAA8\uB378\uB85C \uC804\uD658\uD55C\uB2E4`);
         }

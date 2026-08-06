@@ -77,11 +77,16 @@ export interface GlmClientOptions {
 }
 
 /**
- * 모델을 바꾸면 풀릴 수 있는 오류인가.
- * 1302 rate limit / 1305 overloaded / 1113 잔액 부족 — 모두 다른 모델에서는 성공할 수 있다.
+ * 재시도를 다 쓴 뒤 다른 모델로 넘어가볼 가치가 있는 오류인가.
+ *
+ * 용량 부족(429 / 1302 rate limit / 1305 overloaded / 1113 잔액 부족)은 물론이고,
+ * 네트워크 오류와 타임아웃도 포함한다 — 혼잡한 모델은 요청을 받아두고 응답하지 않는데,
+ * 한산한 모델에서는 곧바로 처리된다.
+ * 반대로 finish_reason=length나 sensitive는 모델을 바꿔도 같은 결과라 제외된다.
  */
-function isCapacityError(error: unknown): boolean {
+function shouldTryNextModel(error: unknown): boolean {
   if (!(error instanceof GlmError)) return false
+  if (error.retriable) return true
   if (error.status === 429 || error.status === 503) return true
   return ['1302', '1305', '1113'].includes(String(error.code))
 }
@@ -110,7 +115,8 @@ export class GlmClient {
     this.model = options.model
     this.lastUsedModel = options.model
     this.fallbackModels = (options.fallbackModels ?? []).filter((model) => model !== options.model)
-    this.timeoutMs = options.timeoutMs ?? 180_000
+    // 무료 티어는 요청을 큐에 넣고 늦게 처리한다. thinking을 켠 대형 프롬프트는 몇 분씩 걸린다.
+    this.timeoutMs = options.timeoutMs ?? 300_000
     // 무료 모델은 공용 용량이 혼잡해 429가 흔하다. 모델당 이만큼 버티고 다음 모델로 넘어간다.
     this.maxRetries = options.maxRetries ?? 4
   }
@@ -144,7 +150,7 @@ export class GlmClient {
       } catch (error) {
         lastError = error
         // 인증 실패나 잘못된 요청이면 모델을 바꿔도 소용없다
-        if (!isCapacityError(error)) throw error
+        if (!shouldTryNextModel(error)) throw error
         if (index < models.length - 1) {
           log.warn(`${model} 사용 불가(${(error as Error).message}) — 다음 모델로 전환한다`)
         }
