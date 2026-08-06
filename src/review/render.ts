@@ -22,8 +22,12 @@ export function renderFindingComment(finding: Finding): string {
     finding.detail.trim(),
   ]
 
-  if (finding.suggestion?.trim()) {
-    parts.push('', '```suggestion', stripFence(finding.suggestion).replace(/\n+$/, ''), '```')
+  const suggestion = usableSuggestion(finding)
+  if (suggestion) {
+    parts.push('', '```suggestion', suggestion, '```')
+  } else if (finding.suggestion?.trim()) {
+    // 코드로 쓸 수 없는 제안은 버리지 않고 본문에 서술로 남긴다
+    parts.push('', `**제안:** ${finding.suggestion.trim().replace(/\n+/g, ' ')}`)
   }
 
   if (finding.confidence < 0.7) {
@@ -33,11 +37,43 @@ export function renderFindingComment(finding: Finding): string {
   return parts.join('\n')
 }
 
-/** 모델이 suggestion을 코드펜스로 감싸서 보내는 경우가 잦다 */
-function stripFence(code: string): string {
-  const trimmed = code.trim()
-  const match = /^```[\w-]*\n([\s\S]*?)\n?```$/.exec(trimmed)
-  return match?.[1] ?? code.replace(/\n+$/, '')
+/**
+ * 모델이 suggestion을 코드펜스로 감싸서 보내는 경우가 잦다.
+ * 제안은 줄 전체를 교체하므로 **앞쪽 들여쓰기는 건드리지 않는다**.
+ */
+export function stripFence(code: string): string {
+  const match = /^\s*```[\w-]*\n([\s\S]*?)\n?```\s*$/.exec(code)
+  return (match?.[1] ?? code).replace(/\s+$/, '')
+}
+
+// 코드가 아니라 설명문임을 드러내는 신호들
+const KOREAN_SENTENCE_END = /(합니다|하세요|해야\s|입니다|세요|십시오|같습니다|필요합니다)/
+const PROSE_LEAD = /^\s*(?:[-*]\s*)?[가-힣]/
+
+/**
+ * GitHub의 ```suggestion 블록은 "이 코드로 교체" 버튼을 만든다.
+ * 여기에 설명문이 들어가면 누가 눌렀을 때 코드가 문장으로 바뀐다 — 되돌리기 어려운 파괴적 동작이라
+ * 코드로 확신할 수 없으면 제안 블록을 만들지 않는다.
+ *
+ * 또한 여러 줄에 걸친 지적은 교체 범위가 모호하므로 제안을 달지 않는다.
+ */
+export function usableSuggestion(finding: Finding): string | undefined {
+  // 들여쓰기가 곧 교체될 코드의 일부라 앞쪽 공백을 잘라내면 안 된다
+  const raw = finding.suggestion
+  if (!raw?.trim()) return undefined
+
+  // 범위 지적은 어디까지 교체되는지 불분명하다
+  if (finding.endLine !== undefined && finding.endLine !== finding.line) return undefined
+
+  const code = stripFence(raw)
+  if (!code.trim()) return undefined
+
+  // 설명문에 코드를 인용해 넣은 형태 (예: "…하세요: `return x`")
+  if (code.includes('`')) return undefined
+  if (KOREAN_SENTENCE_END.test(code)) return undefined
+  if (PROSE_LEAD.test(code)) return undefined
+
+  return code
 }
 
 /** 리뷰 요약(리뷰 본문) */

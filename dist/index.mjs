@@ -48472,8 +48472,14 @@ function buildSystemPrompt(config2) {
     "\uC22B\uC790\uAC00 \uBE44\uC5B4 \uC788\uB294 \uC904(\uC0AD\uC81C\uB41C \uC904)\uC740 \uC778\uB77C\uC778 \uCF54\uBA58\uD2B8\uB97C \uB2EC \uC218 \uC5C6\uC73C\uBBC0\uB85C, \uADF8 \uBB38\uC81C\uB294 summary\uC5D0 \uC11C\uC220\uD55C\uB2E4.",
     "",
     "## suggestion \uD544\uB4DC",
-    "\uD574\uB2F9 \uC904\uB4E4\uC744 **\uADF8\uB300\uB85C \uB300\uCCB4**\uD560 \uC218 \uC788\uB294 \uC644\uC131\uB41C \uCF54\uB4DC\uC77C \uB54C\uB9CC \uCC44\uC6B4\uB2E4. \uB4E4\uC5EC\uC4F0\uAE30\uAE4C\uC9C0 \uC815\uD655\uD788 \uB9DE\uCD98\uB2E4.",
-    "\uC124\uBA85\uC774\uB098 \uC8FC\uC11D(`// ...`), \uBD80\uBD84 \uCF54\uB4DC\uB294 \uB123\uC9C0 \uC54A\uB294\uB2E4. \uC560\uB9E4\uD558\uBA74 \uC0DD\uB7B5\uD558\uACE0 detail\uC5D0 \uC11C\uC220\uD55C\uB2E4.",
+    'GitHub\uC5D0\uC11C \uC774 \uAC12\uC740 "\uC774 \uCF54\uB4DC\uB85C \uAD50\uCCB4" \uBC84\uD2BC\uC774 \uB41C\uB2E4. \uB530\uB77C\uC11C **\uC624\uC9C1 \uC18C\uC2A4 \uCF54\uB4DC\uB9CC** \uB4E4\uC5B4\uAC08 \uC218 \uC788\uB2E4.',
+    "`line` \uC904\uC744 \uADF8\uB300\uB85C \uB300\uCCB4\uD560 \uC218 \uC788\uB294 \uC644\uC131\uB41C \uCF54\uB4DC\uC77C \uB54C\uB9CC \uCC44\uC6B0\uACE0, \uB4E4\uC5EC\uC4F0\uAE30\uAE4C\uC9C0 \uC815\uD655\uD788 \uB9DE\uCD98\uB2E4.",
+    "\uC544\uB798\uB294 \uBAA8\uB450 \uC798\uBABB\uB41C \uC608\uB2E4 \u2014 \uC774\uB807\uAC8C \uC4F0\uB290\uB2C8 \uD544\uB4DC\uB97C \uC0DD\uB7B5\uD558\uACE0 detail\uC5D0 \uC11C\uC220\uD558\uB77C.",
+    '- \u2717 "null \uCCB4\uD06C\uB97C \uCD94\uAC00\uD558\uC138\uC694: `return user.profile?.name`"  \u2190 \uC124\uBA85\uBB38',
+    '- \u2717 "\uC7AC\uC2DC\uB3C4 \uC0AC\uC774\uC5D0 \uC9C0\uC5F0\uC744 \uB450\uC138\uC694"  \u2190 \uC124\uBA85\uBB38',
+    '- \u2717 "// \uC5EC\uAE30\uC11C null\uC744 \uD655\uC778\uD560 \uAC83"  \u2190 \uC8FC\uC11D\uB9CC',
+    `- \u2713 "  return user.profile?.fullName?.split(' ')[0] ?? ''"  \u2190 \uADF8\uB300\uB85C \uBD99\uC5EC\uB123\uC744 \uC218 \uC788\uB294 \uCF54\uB4DC`,
+    "\uC5EC\uB7EC \uC904\uC5D0 \uAC78\uCE5C \uC9C0\uC801(end_line \uC9C0\uC815)\uC5D0\uB294 suggestion\uC744 \uB123\uC9C0 \uC54A\uB294\uB2E4.",
     "",
     "## \uCD9C\uB825 \uD615\uC2DD",
     "\uC124\uBA85 \uC5C6\uC774 \uC544\uB798 JSON \uAC1D\uCCB4 \uD558\uB098\uB9CC \uCD9C\uB825\uD55C\uB2E4.",
@@ -48712,8 +48718,11 @@ function renderFindingComment(finding) {
     "",
     finding.detail.trim()
   ];
-  if (finding.suggestion?.trim()) {
-    parts.push("", "```suggestion", stripFence(finding.suggestion).replace(/\n+$/, ""), "```");
+  const suggestion = usableSuggestion(finding);
+  if (suggestion) {
+    parts.push("", "```suggestion", suggestion, "```");
+  } else if (finding.suggestion?.trim()) {
+    parts.push("", `**\uC81C\uC548:** ${finding.suggestion.trim().replace(/\n+/g, " ")}`);
   }
   if (finding.confidence < 0.7) {
     parts.push("", `<sub>\uD655\uC2E0\uB3C4 ${Math.round(finding.confidence * 100)}% \u2014 \uC624\uD0D0\uC77C \uC218 \uC788\uB2E4.</sub>`);
@@ -48721,9 +48730,21 @@ function renderFindingComment(finding) {
   return parts.join("\n");
 }
 function stripFence(code) {
-  const trimmed = code.trim();
-  const match2 = /^```[\w-]*\n([\s\S]*?)\n?```$/.exec(trimmed);
-  return match2?.[1] ?? code.replace(/\n+$/, "");
+  const match2 = /^\s*```[\w-]*\n([\s\S]*?)\n?```\s*$/.exec(code);
+  return (match2?.[1] ?? code).replace(/\s+$/, "");
+}
+var KOREAN_SENTENCE_END = /(합니다|하세요|해야\s|입니다|세요|십시오|같습니다|필요합니다)/;
+var PROSE_LEAD = /^\s*(?:[-*]\s*)?[가-힣]/;
+function usableSuggestion(finding) {
+  const raw = finding.suggestion;
+  if (!raw?.trim()) return void 0;
+  if (finding.endLine !== void 0 && finding.endLine !== finding.line) return void 0;
+  const code = stripFence(raw);
+  if (!code.trim()) return void 0;
+  if (code.includes("`")) return void 0;
+  if (KOREAN_SENTENCE_END.test(code)) return void 0;
+  if (PROSE_LEAD.test(code)) return void 0;
+  return code;
 }
 function renderReviewSummary(result, inline, overflow, meta3, config2) {
   const counts = countBySeverity([...inline, ...overflow]);
