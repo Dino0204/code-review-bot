@@ -42,6 +42,41 @@ const NOTABLE_ROOT_FILES = [
   'Makefile',
 ]
 
+function git(workspace: string, args: string[]): string | undefined {
+  try {
+    return execFileSync('git', args, {
+      cwd: workspace,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * 워크스페이스가 정확히 PR head 커밋 상태인지 확인한다.
+ *
+ * diff는 GitHub API(PR head 기준)에서 오는데 파일 전체 내용은 디스크에서 읽는다.
+ * 둘이 어긋나면 모델이 보는 줄 번호가 diff의 줄 번호와 달라져 코멘트가 엉뚱한 줄에 붙는다.
+ * 워크플로가 PR head 대신 기본 브랜치나 merge ref를 체크아웃했을 때 실제로 발생한다.
+ */
+export function workspaceMatchesSha(workspace: string, expectedSha: string): boolean {
+  const head = git(workspace, ['rev-parse', 'HEAD'])?.trim()
+  if (!head) return false
+  if (head !== expectedSha) {
+    log.warn(`워크스페이스 HEAD(${head.slice(0, 8)})가 PR head(${expectedSha.slice(0, 8)})와 다르다`)
+    return false
+  }
+  const dirty = git(workspace, ['status', '--porcelain'])?.trim()
+  if (dirty) {
+    log.warn('워크스페이스에 커밋되지 않은 변경이 있다 — 파일 내용이 diff와 어긋난다')
+    return false
+  }
+  return true
+}
+
 export function listTrackedFiles(workspace: string): string[] {
   try {
     const output = execFileSync('git', ['ls-files', '-z'], {

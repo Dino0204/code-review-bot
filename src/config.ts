@@ -9,6 +9,8 @@ export type Severity = (typeof SEVERITIES)[number]
 export interface BotConfig {
   /** z.ai 모델 ID */
   model: string
+  /** 기본 모델이 용량 부족(429/1305/1113)으로 막힐 때 순서대로 시도할 대체 모델 */
+  fallbackModels: string[]
   /** z.ai API base URL (버전 경로까지 포함) */
   baseUrl: string
   /** 리뷰 코멘트 언어 */
@@ -57,6 +59,9 @@ export interface BotConfig {
 
 export const DEFAULT_CONFIG: BotConfig = {
   model: 'glm-4.7-flash',
+  // glm-4.7-flash는 무료 공용 용량이라 혼잡할 때 통째로 막힌다(코드 1305).
+  // 같은 무료 티어인 glm-4.5-flash로 폴백해 리뷰가 통째로 실패하는 것을 막는다.
+  fallbackModels: ['glm-4.5-flash'],
   baseUrl: 'https://api.z.ai/api/paas/v4',
   language: 'ko',
   temperature: 0.2,
@@ -151,6 +156,8 @@ function pickFileConfig(raw: unknown): Partial<BotConfig> {
   if (exclude) out.exclude = [...DEFAULT_CONFIG.exclude, ...exclude]
   const include = coerceStringArray(r['include'])
   if (include) out.include = include
+  const fallbackModels = coerceStringArray(r['fallbackModels'])
+  if (fallbackModels) out.fallbackModels = fallbackModels
 
   if (typeof r['minSeverity'] === 'string' && (SEVERITIES as readonly string[]).includes(r['minSeverity'])) {
     out.minSeverity = r['minSeverity'] as Severity
@@ -163,6 +170,12 @@ function envOverrides(): Partial<BotConfig> {
   const env = process.env
   const out: Partial<BotConfig> = {}
   if (env['REVIEWBOT_MODEL']) out.model = env['REVIEWBOT_MODEL']
+  if (env['REVIEWBOT_FALLBACK_MODELS'] !== undefined) {
+    out.fallbackModels = env['REVIEWBOT_FALLBACK_MODELS']
+      .split(',')
+      .map((model) => model.trim())
+      .filter(Boolean)
+  }
   if (env['REVIEWBOT_BASE_URL']) out.baseUrl = env['REVIEWBOT_BASE_URL']
   if (env['REVIEWBOT_LANGUAGE']) out.language = env['REVIEWBOT_LANGUAGE']
   if (env['REVIEWBOT_TRIGGER_PREFIX']) out.triggerPrefix = env['REVIEWBOT_TRIGGER_PREFIX']

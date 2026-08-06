@@ -17,6 +17,7 @@ function applyActionInputs(): void {
     ['zai-api-key', 'ZAI_API_KEY'],
     ['github-token', 'GITHUB_TOKEN'],
     ['model', 'REVIEWBOT_MODEL'],
+    ['fallback-models', 'REVIEWBOT_FALLBACK_MODELS'],
     ['base-url', 'REVIEWBOT_BASE_URL'],
     ['language', 'REVIEWBOT_LANGUAGE'],
     ['trigger-prefix', 'REVIEWBOT_TRIGGER_PREFIX'],
@@ -89,7 +90,12 @@ async function main(): Promise<void> {
     await github.addReaction(trigger.commentId, 'eyes')
   }
 
-  const glm = new GlmClient({ apiKey, baseUrl: config.baseUrl, model: config.model })
+  const glm = new GlmClient({
+    apiKey,
+    baseUrl: config.baseUrl,
+    model: config.model,
+    fallbackModels: config.fallbackModels,
+  })
   const deps: RunnerDeps = { github, glm, config, workspace }
 
   if (command.name === 'help') {

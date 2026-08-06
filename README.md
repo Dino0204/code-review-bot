@@ -133,7 +133,8 @@ customInstructions: |
 | --- | --- | --- |
 | `zai-api-key` | (필수) | z.ai API 키 |
 | `github-token` | `${{ github.token }}` | 코멘트 작성용 토큰 |
-| `model` | `glm-4.7-flash` | `glm-4.7-flashx`, `glm-4.7` 등으로 교체 가능 |
+| `model` | `glm-4.7-flash` | `glm-4.7-flashx`, `glm-4.7` 등으로 교체 가능 (유료 모델은 잔액 필요) |
+| `fallback-models` | `glm-4.5-flash` | 기본 모델이 막힐 때 시도할 대체 모델 (쉼표 구분) |
 | `language` | `ko` | `en`, `ja`, `zh` |
 | `min-severity` | `minor` | `critical` / `major` / `minor` / `nit` |
 | `auto-review` | `true` | PR 이벤트 시 자동 리뷰 |
@@ -154,6 +155,21 @@ LLM 리뷰가 흔히 망하는 지점들을 코드로 막아뒀다.
 - **깨진 JSON** — `response_format: json_object` 로 요청하고, 코드펜스가 섞여도 균형 잡힌 JSON을 추출한다. 스키마가 안 맞으면 오류를 붙여 한 번 교정을 요청한다.
 - **추측성 지적** — 확신도를 함께 받아 `minConfidence` 미만은 버리고, 0.7 미만은 코멘트에 "오탐일 수 있다"를 붙인다.
 - **nit 폭격** — 심각도 임계값과 인라인 개수 상한을 둔다.
+
+## 무료 티어에서 알아둘 것
+
+`glm-4.7-flash`는 **공용 무료 용량**이라 혼잡한 시간대에는 요청이 통째로 거절된다 (HTTP 429, 코드 `1305 service temporarily overloaded`).
+계정 문제가 아니고, 재시도로 늘 뚫리지도 않는다. 그래서 두 단계로 버틴다.
+
+1. 모델당 최대 4회 지수 백오프 재시도 (`Retry-After` 헤더를 존중한다)
+2. 그래도 막히면 `fallbackModels` 의 다음 모델로 전환 — 기본값은 같은 무료 티어의 `glm-4.5-flash`
+
+실제로 응답한 모델은 리뷰 코멘트 하단에 표시된다. 폴백이 자주 걸린다면 z.ai 콘솔에서 잔액을 충전하고
+`model: glm-4.7-flashx` 로 바꾸는 편이 낫다 — 입력 $0.07 / 출력 $0.4 per 1M 토큰이라, 이 리포지토리
+전체(약 70K 입력 토큰) 리뷰 한 번이 1센트 미만이다.
+
+**주의:** `thinking: true` 일 때 reasoning 토큰도 `maxOutputTokens` 를 소비한다. 부족하면 `finish_reason: length` 로
+JSON이 잘린 채 돌아온다. 기본값 24576은 그 여유를 감안한 값이다.
 
 ---
 

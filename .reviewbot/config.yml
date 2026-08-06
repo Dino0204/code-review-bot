@@ -2,7 +2,11 @@
 # 모든 항목은 선택이며, 지정하지 않으면 기본값을 쓴다.
 
 # --- 모델 ---
-model: glm-4.7-flash # 무료 티어. 더 깊은 리뷰가 필요하면 glm-4.7-flashx 또는 glm-4.7
+model: glm-4.7-flash # 무료 티어. 더 깊은 리뷰가 필요하면 glm-4.7-flashx 또는 glm-4.7 (잔액 필요)
+# glm-4.7-flash는 무료 공용 용량이라 혼잡하면 통째로 막힌다(429 / 코드 1305).
+# 그때 순서대로 시도할 대체 모델. 빈 배열이면 폴백 없이 실패한다.
+fallbackModels:
+  - glm-4.5-flash
 language: ko
 temperature: 0.2
 thinking: true # chain-of-thought 활성화 (품질↑, 지연시간↑)

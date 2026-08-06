@@ -18,6 +18,10 @@ inputs:
     description: '사용할 GLM 모델 ID'
     required: false
     default: 'glm-4.7-flash'
+  fallback-models:
+    description: '기본 모델이 용량 부족으로 막힐 때 순서대로 시도할 대체 모델 (쉼표 구분). 빈 문자열이면 폴백 없음'
+    required: false
+    default: 'glm-4.5-flash'
   base-url:
     description: 'z.ai API base URL'
     required: false

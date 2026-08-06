@@ -36,6 +36,8 @@ export class GlmError extends Error {
     readonly status?: number,
     readonly code?: string | number,
     readonly retriable = false,
+    /** 서버가 Retry-After로 알려준 대기 시간 */
+    readonly retryAfterMs?: number,
   ) {
     super(message)
     this.name = 'GlmError'
@@ -68,8 +70,20 @@ export interface GlmClientOptions {
   apiKey: string
   baseUrl?: string
   model: string
+  /** 기본 모델이 용량 부족으로 계속 거절될 때 순서대로 시도할 대체 모델 */
+  fallbackModels?: string[]
   timeoutMs?: number
   maxRetries?: number
+}
+
+/**
+ * 모델을 바꾸면 풀릴 수 있는 오류인가.
+ * 1302 rate limit / 1305 overloaded / 1113 잔액 부족 — 모두 다른 모델에서는 성공할 수 있다.
+ */
+function isCapacityError(error: unknown): boolean {
+  if (!(error instanceof GlmError)) return false
+  if (error.status === 429 || error.status === 503) return true
+  return ['1302', '1305', '1113'].includes(String(error.code))
 }
 
 /**
@@ -80,24 +94,29 @@ export class GlmClient {
   private readonly apiKey: string
   private readonly baseUrl: string
   private readonly model: string
+  private readonly fallbackModels: string[]
   private readonly timeoutMs: number
   private readonly maxRetries: number
 
   /** 이번 실행에서 누적된 토큰 사용량 */
   readonly totalUsage: GlmUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+  /** 실제로 응답을 준 모델 — 폴백이 걸리면 기본 모델과 다르다 */
+  lastUsedModel: string
 
   constructor(options: GlmClientOptions) {
     if (!options.apiKey) throw new GlmError('ZAI_API_KEY가 비어 있다')
     this.apiKey = options.apiKey
     this.baseUrl = (options.baseUrl ?? 'https://api.z.ai/api/paas/v4').replace(/\/+$/, '')
     this.model = options.model
+    this.lastUsedModel = options.model
+    this.fallbackModels = (options.fallbackModels ?? []).filter((model) => model !== options.model)
     this.timeoutMs = options.timeoutMs ?? 180_000
+    // 무료 모델은 공용 용량이 혼잡해 429가 흔하다. 모델당 이만큼 버티고 다음 모델로 넘어간다.
     this.maxRetries = options.maxRetries ?? 4
   }
 
   async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<ChatResult> {
     const body: Record<string, unknown> = {
-      model: this.model,
       messages,
       stream: false,
       temperature: options.temperature ?? 0.2,
@@ -111,11 +130,38 @@ export class GlmClient {
     }
     if (options.stop?.length) body['stop'] = options.stop.slice(0, 4)
 
+    // 기본 모델이 용량 부족으로 계속 막히면 대체 모델로 넘어간다.
+    // 무료 모델(glm-4.7-flash)은 공용 용량을 쓰기 때문에 혼잡한 시간대에 통째로 막힐 수 있다.
+    const models = [this.model, ...this.fallbackModels]
+    let lastError: unknown
+
+    for (const [index, model] of models.entries()) {
+      try {
+        const result = await this.withRetries({ ...body, model })
+        if (index > 0) log.warn(`${this.model}이(가) 막혀 ${model}로 리뷰했다`)
+        this.lastUsedModel = model
+        return result
+      } catch (error) {
+        lastError = error
+        // 인증 실패나 잘못된 요청이면 모델을 바꿔도 소용없다
+        if (!isCapacityError(error)) throw error
+        if (index < models.length - 1) {
+          log.warn(`${model} 사용 불가(${(error as Error).message}) — 다음 모델로 전환한다`)
+        }
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new GlmError('GLM 호출 실패')
+  }
+
+  private async withRetries(body: Record<string, unknown>): Promise<ChatResult> {
     let lastError: unknown
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       if (attempt > 0) {
-        const delay = Math.min(30_000, 2 ** attempt * 1000) + Math.floor(Math.random() * 500)
-        log.warn(`GLM 호출 재시도 ${attempt}/${this.maxRetries} — ${delay}ms 대기`)
+        const serverHint = lastError instanceof GlmError ? lastError.retryAfterMs : undefined
+        const backoff = Math.min(60_000, 2 ** attempt * 2000) + Math.floor(Math.random() * 1000)
+        const delay = Math.max(serverHint ?? 0, backoff)
+        log.warn(`GLM 호출 재시도 ${attempt}/${this.maxRetries} — ${Math.round(delay / 1000)}초 대기`)
         await sleep(delay)
       }
       try {
@@ -204,6 +250,7 @@ export class GlmClient {
         response.status,
         undefined,
         RETRIABLE_STATUS.has(response.status),
+        parseRetryAfter(response.headers.get('retry-after')),
       )
     }
 
@@ -225,7 +272,14 @@ export class GlmClient {
     const content = choice?.message?.content ?? ''
     if (!content.trim()) {
       const reason = choice?.finish_reason ?? 'unknown'
-      throw new GlmError(`GLM이 빈 응답을 반환했다 (finish_reason=${reason})`, response.status, reason, reason !== 'sensitive')
+      // length면 reasoning 토큰이 max_tokens를 다 먹은 것이다 — 다시 불러도 같은 결과다
+      const hint = reason === 'length' ? ' — reasoning 토큰이 max_tokens를 소진했다. maxOutputTokens를 올려야 한다' : ''
+      throw new GlmError(
+        `GLM이 빈 응답을 반환했다 (finish_reason=${reason})${hint}`,
+        response.status,
+        reason,
+        reason !== 'sensitive' && reason !== 'length',
+      )
     }
 
     return {
@@ -242,6 +296,16 @@ export class GlmClient {
         : undefined,
     }
   }
+}
+
+/** Retry-After는 초 단위 정수 또는 HTTP 날짜 형식으로 온다 */
+export function parseRetryAfter(raw: string | null): number | undefined {
+  if (!raw) return undefined
+  const seconds = Number(raw)
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds, 120) * 1000
+  const timestamp = Date.parse(raw)
+  if (Number.isNaN(timestamp)) return undefined
+  return Math.max(0, Math.min(timestamp - Date.now(), 120_000))
 }
 
 function extractErrorMessage(text: string): string | undefined {

@@ -26835,6 +26835,9 @@ var log = {
 var SEVERITIES = ["critical", "major", "minor", "nit"];
 var DEFAULT_CONFIG = {
   model: "glm-4.7-flash",
+  // glm-4.7-flash는 무료 공용 용량이라 혼잡할 때 통째로 막힌다(코드 1305).
+  // 같은 무료 티어인 glm-4.5-flash로 폴백해 리뷰가 통째로 실패하는 것을 막는다.
+  fallbackModels: ["glm-4.5-flash"],
   baseUrl: "https://api.z.ai/api/paas/v4",
   language: "ko",
   temperature: 0.2,
@@ -26915,6 +26918,8 @@ function pickFileConfig(raw) {
   if (exclude) out.exclude = [...DEFAULT_CONFIG.exclude, ...exclude];
   const include = coerceStringArray(r["include"]);
   if (include) out.include = include;
+  const fallbackModels = coerceStringArray(r["fallbackModels"]);
+  if (fallbackModels) out.fallbackModels = fallbackModels;
   if (typeof r["minSeverity"] === "string" && SEVERITIES.includes(r["minSeverity"])) {
     out.minSeverity = r["minSeverity"];
   }
@@ -26924,6 +26929,9 @@ function envOverrides() {
   const env = process.env;
   const out = {};
   if (env["REVIEWBOT_MODEL"]) out.model = env["REVIEWBOT_MODEL"];
+  if (env["REVIEWBOT_FALLBACK_MODELS"] !== void 0) {
+    out.fallbackModels = env["REVIEWBOT_FALLBACK_MODELS"].split(",").map((model) => model.trim()).filter(Boolean);
+  }
   if (env["REVIEWBOT_BASE_URL"]) out.baseUrl = env["REVIEWBOT_BASE_URL"];
   if (env["REVIEWBOT_LANGUAGE"]) out.language = env["REVIEWBOT_LANGUAGE"];
   if (env["REVIEWBOT_TRIGGER_PREFIX"]) out.triggerPrefix = env["REVIEWBOT_TRIGGER_PREFIX"];
@@ -26963,37 +26971,48 @@ function meetsSeverity(severity, threshold) {
 
 // src/glm/client.ts
 var GlmError = class extends Error {
-  constructor(message, status, code, retriable = false) {
+  constructor(message, status, code, retriable = false, retryAfterMs) {
     super(message);
     this.status = status;
     this.code = code;
     this.retriable = retriable;
+    this.retryAfterMs = retryAfterMs;
     this.name = "GlmError";
   }
   status;
   code;
   retriable;
+  retryAfterMs;
 };
 var RETRIABLE_STATUS = /* @__PURE__ */ new Set([408, 409, 429, 500, 502, 503, 504]);
+function isCapacityError(error52) {
+  if (!(error52 instanceof GlmError)) return false;
+  if (error52.status === 429 || error52.status === 503) return true;
+  return ["1302", "1305", "1113"].includes(String(error52.code));
+}
 var GlmClient = class {
   apiKey;
   baseUrl;
   model;
+  fallbackModels;
   timeoutMs;
   maxRetries;
   /** 이번 실행에서 누적된 토큰 사용량 */
   totalUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+  /** 실제로 응답을 준 모델 — 폴백이 걸리면 기본 모델과 다르다 */
+  lastUsedModel;
   constructor(options) {
     if (!options.apiKey) throw new GlmError("ZAI_API_KEY\uAC00 \uBE44\uC5B4 \uC788\uB2E4");
     this.apiKey = options.apiKey;
     this.baseUrl = (options.baseUrl ?? "https://api.z.ai/api/paas/v4").replace(/\/+$/, "");
     this.model = options.model;
+    this.lastUsedModel = options.model;
+    this.fallbackModels = (options.fallbackModels ?? []).filter((model) => model !== options.model);
     this.timeoutMs = options.timeoutMs ?? 18e4;
     this.maxRetries = options.maxRetries ?? 4;
   }
   async chat(messages, options = {}) {
     const body = {
-      model: this.model,
       messages,
       stream: false,
       temperature: options.temperature ?? 0.2,
@@ -27006,11 +27025,32 @@ var GlmClient = class {
       body["response_format"] = { type: "json_object" };
     }
     if (options.stop?.length) body["stop"] = options.stop.slice(0, 4);
+    const models = [this.model, ...this.fallbackModels];
+    let lastError;
+    for (const [index, model] of models.entries()) {
+      try {
+        const result = await this.withRetries({ ...body, model });
+        if (index > 0) log.warn(`${this.model}\uC774(\uAC00) \uB9C9\uD600 ${model}\uB85C \uB9AC\uBDF0\uD588\uB2E4`);
+        this.lastUsedModel = model;
+        return result;
+      } catch (error52) {
+        lastError = error52;
+        if (!isCapacityError(error52)) throw error52;
+        if (index < models.length - 1) {
+          log.warn(`${model} \uC0AC\uC6A9 \uBD88\uAC00(${error52.message}) \u2014 \uB2E4\uC74C \uBAA8\uB378\uB85C \uC804\uD658\uD55C\uB2E4`);
+        }
+      }
+    }
+    throw lastError instanceof Error ? lastError : new GlmError("GLM \uD638\uCD9C \uC2E4\uD328");
+  }
+  async withRetries(body) {
     let lastError;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       if (attempt > 0) {
-        const delay = Math.min(3e4, 2 ** attempt * 1e3) + Math.floor(Math.random() * 500);
-        log.warn(`GLM \uD638\uCD9C \uC7AC\uC2DC\uB3C4 ${attempt}/${this.maxRetries} \u2014 ${delay}ms \uB300\uAE30`);
+        const serverHint = lastError instanceof GlmError ? lastError.retryAfterMs : void 0;
+        const backoff = Math.min(6e4, 2 ** attempt * 2e3) + Math.floor(Math.random() * 1e3);
+        const delay = Math.max(serverHint ?? 0, backoff);
+        log.warn(`GLM \uD638\uCD9C \uC7AC\uC2DC\uB3C4 ${attempt}/${this.maxRetries} \u2014 ${Math.round(delay / 1e3)}\uCD08 \uB300\uAE30`);
         await sleep(delay);
       }
       try {
@@ -27089,7 +27129,8 @@ var GlmClient = class {
         `GLM HTTP ${response.status}: ${detail}`,
         response.status,
         void 0,
-        RETRIABLE_STATUS.has(response.status)
+        RETRIABLE_STATUS.has(response.status),
+        parseRetryAfter(response.headers.get("retry-after"))
       );
     }
     let data;
@@ -27107,7 +27148,13 @@ var GlmClient = class {
     const content = choice?.message?.content ?? "";
     if (!content.trim()) {
       const reason = choice?.finish_reason ?? "unknown";
-      throw new GlmError(`GLM\uC774 \uBE48 \uC751\uB2F5\uC744 \uBC18\uD658\uD588\uB2E4 (finish_reason=${reason})`, response.status, reason, reason !== "sensitive");
+      const hint = reason === "length" ? " \u2014 reasoning \uD1A0\uD070\uC774 max_tokens\uB97C \uC18C\uC9C4\uD588\uB2E4. maxOutputTokens\uB97C \uC62C\uB824\uC57C \uD55C\uB2E4" : "";
+      throw new GlmError(
+        `GLM\uC774 \uBE48 \uC751\uB2F5\uC744 \uBC18\uD658\uD588\uB2E4 (finish_reason=${reason})${hint}`,
+        response.status,
+        reason,
+        reason !== "sensitive" && reason !== "length"
+      );
     }
     return {
       content,
@@ -27122,6 +27169,14 @@ var GlmClient = class {
     };
   }
 };
+function parseRetryAfter(raw) {
+  if (!raw) return void 0;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds, 120) * 1e3;
+  const timestamp = Date.parse(raw);
+  if (Number.isNaN(timestamp)) return void 0;
+  return Math.max(0, Math.min(timestamp - Date.now(), 12e4));
+}
 function extractErrorMessage(text) {
   try {
     const parsed = JSON.parse(text);
@@ -33447,6 +33502,32 @@ var NOTABLE_ROOT_FILES = [
   "docker-compose.yml",
   "Makefile"
 ];
+function git(workspace, args) {
+  try {
+    return execFileSync("git", args, {
+      cwd: workspace,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "ignore"]
+    });
+  } catch {
+    return void 0;
+  }
+}
+function workspaceMatchesSha(workspace, expectedSha) {
+  const head = git(workspace, ["rev-parse", "HEAD"])?.trim();
+  if (!head) return false;
+  if (head !== expectedSha) {
+    log.warn(`\uC6CC\uD06C\uC2A4\uD398\uC774\uC2A4 HEAD(${head.slice(0, 8)})\uAC00 PR head(${expectedSha.slice(0, 8)})\uC640 \uB2E4\uB974\uB2E4`);
+    return false;
+  }
+  const dirty = git(workspace, ["status", "--porcelain"])?.trim();
+  if (dirty) {
+    log.warn("\uC6CC\uD06C\uC2A4\uD398\uC774\uC2A4\uC5D0 \uCEE4\uBC0B\uB418\uC9C0 \uC54A\uC740 \uBCC0\uACBD\uC774 \uC788\uB2E4 \u2014 \uD30C\uC77C \uB0B4\uC6A9\uC774 diff\uC640 \uC5B4\uAE0B\uB09C\uB2E4");
+    return false;
+  }
+  return true;
+}
 function listTrackedFiles(workspace) {
   try {
     const output = execFileSync("git", ["ls-files", "-z"], {
@@ -33528,6 +33609,30 @@ import { execFileSync as execFileSync2 } from "node:child_process";
 import { existsSync as existsSync4, readFileSync as readFileSync4, statSync } from "node:fs";
 import { join as join2, posix, basename, extname } from "node:path";
 var CODE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
+var CONTEXT_EXTENSIONS = /* @__PURE__ */ new Set([
+  ...CODE_EXTENSIONS,
+  ".py",
+  ".go",
+  ".rs",
+  ".java",
+  ".kt",
+  ".rb",
+  ".php",
+  ".cs",
+  ".swift",
+  ".scala",
+  ".sql",
+  ".graphql",
+  ".gql",
+  ".vue",
+  ".svelte",
+  ".json",
+  ".yml",
+  ".yaml",
+  ".toml",
+  ".md"
+]);
+var GENERATED_PATTERNS = [/(^|\/)dist\//, /(^|\/)build\//, /\.min\.[cm]?js$/, /-lock\.json$/, /\.lock$/];
 var RESOLVE_SUFFIXES = [
   "",
   ".ts",
@@ -33657,6 +33762,7 @@ function findRelatedFiles(workspace, diffFiles, config2) {
   const add = (path2, reason) => {
     if (changedPaths.has(path2) || picked.has(path2)) return;
     if (picked.size >= config2.maxRelatedFiles) return;
+    if (!isUsefulContextFile(path2, config2)) return;
     picked.set(path2, reason);
   };
   for (const file2 of diffFiles) {
@@ -33695,6 +33801,11 @@ function findRelatedFiles(workspace, diffFiles, config2) {
   }
   log.info(`\uAD00\uB828 \uD30C\uC77C ${related.length}\uAC1C \uC218\uC9D1: ${related.map((file2) => file2.path).join(", ") || "(\uC5C6\uC74C)"}`);
   return related;
+}
+function isUsefulContextFile(path2, config2) {
+  if (GENERATED_PATTERNS.some((pattern) => pattern.test(path2))) return false;
+  if (config2.exclude.some((pattern) => minimatch(path2, pattern, { dot: true }))) return false;
+  return CONTEXT_EXTENSIONS.has(extname(path2));
 }
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -48695,11 +48806,17 @@ async function gatherContext(deps, pr, options = {}) {
     github.listIssueComments(pr.number),
     github.listReviewComments(pr.number)
   ]);
+  const atHead = workspaceMatchesSha(workspace, pr.headSha);
+  if (!atHead) {
+    log.warn(
+      `\uC6CC\uD06C\uC2A4\uD398\uC774\uC2A4\uAC00 PR head(${pr.headSha.slice(0, 8)}) \uC0C1\uD0DC\uAC00 \uC544\uB2C8\uB77C \uBCC0\uACBD \uD30C\uC77C \uC804\uBB38\uC744 \uCEE8\uD14D\uC2A4\uD2B8\uC5D0\uC11C \uC81C\uC678\uD55C\uB2E4. \uC6CC\uD06C\uD50C\uB85C\uC5D0\uC11C \`actions/checkout\` \uC758 \`ref\` \uB97C PR head sha\uB85C \uC9C0\uC815\uD574\uC57C \uB9AC\uBDF0 \uD488\uC9C8\uC774 \uC628\uC804\uD574\uC9C4\uB2E4.`
+    );
+  }
   const context = {
     config: config2,
     pr,
     diffFiles: selected,
-    changedFiles: readChangedFiles(workspace, selected, config2),
+    changedFiles: atHead ? readChangedFiles(workspace, selected, config2) : [],
     relatedFiles: findRelatedFiles(workspace, selected, config2),
     repoMap: buildRepoMap(workspace),
     memory: loadCodebaseMemory(workspace, config2),
@@ -48746,7 +48863,7 @@ async function runReview(deps, pr, options = {}) {
     await github.createIssueComment(
       pr.number,
       renderPlainComment("\u{1F916} \uCF54\uB4DC \uB9AC\uBDF0", "\uB9AC\uBDF0\uD560 \uBCC0\uACBD \uC0AC\uD56D\uC774 \uC5C6\uB2E4. (\uC81C\uC678 \uD328\uD134\uC5D0 \uAC78\uB838\uAC70\uB098 \uBC14\uC774\uB108\uB9AC/\uC0AD\uC81C\uB9CC \uD3EC\uD568\uB41C PR)", {
-        model: config2.model,
+        model: glm.lastUsedModel,
         runUrl: github.runUrl()
       })
     );
@@ -48780,7 +48897,8 @@ async function runReview(deps, pr, options = {}) {
     };
   });
   const body = renderReviewSummary(merged, inline, overflow, {
-    model: config2.model,
+    // 폴백이 걸렸을 수 있으니 설정값이 아니라 실제로 응답한 모델을 적는다
+    model: glm.lastUsedModel,
     reviewedFiles: context.diffFiles.length,
     skippedFiles,
     runUrl: github.runUrl(),
@@ -48812,7 +48930,7 @@ async function runAsk(deps, pr, question) {
     renderPlainComment(`\u{1F916} \uB2F5\uBCC0`, `> ${question.replace(/\n/g, "\n> ")}
 
 ${answer.content}`, {
-      model: config2.model,
+      model: glm.lastUsedModel,
       runUrl: github.runUrl()
     })
   );
@@ -48827,7 +48945,7 @@ async function runSummary(deps, pr) {
   });
   await github.createIssueComment(
     pr.number,
-    renderPlainComment("\u{1F916} PR \uC694\uC57D", summary2.content, { model: config2.model, runUrl: github.runUrl() })
+    renderPlainComment("\u{1F916} PR \uC694\uC57D", summary2.content, { model: glm.lastUsedModel, runUrl: github.runUrl() })
   );
 }
 async function runLearn(deps, pr) {
@@ -48854,7 +48972,7 @@ async function runLearn(deps, pr) {
 ${result.content}
 
 </details>`,
-          { model: config2.model, runUrl: github.runUrl() }
+          { model: glm.lastUsedModel, runUrl: github.runUrl() }
         )
       );
       return;
@@ -48874,7 +48992,7 @@ ${result.content}
         content,
         "````"
       ].join("\n"),
-      { model: config2.model, runUrl: github.runUrl() }
+      { model: glm.lastUsedModel, runUrl: github.runUrl() }
     )
   );
 }
@@ -48952,6 +49070,7 @@ function applyActionInputs() {
     ["zai-api-key", "ZAI_API_KEY"],
     ["github-token", "GITHUB_TOKEN"],
     ["model", "REVIEWBOT_MODEL"],
+    ["fallback-models", "REVIEWBOT_FALLBACK_MODELS"],
     ["base-url", "REVIEWBOT_BASE_URL"],
     ["language", "REVIEWBOT_LANGUAGE"],
     ["trigger-prefix", "REVIEWBOT_TRIGGER_PREFIX"],
@@ -49012,7 +49131,12 @@ async function main() {
     }
     await github.addReaction(trigger.commentId, "eyes");
   }
-  const glm = new GlmClient({ apiKey, baseUrl: config2.baseUrl, model: config2.model });
+  const glm = new GlmClient({
+    apiKey,
+    baseUrl: config2.baseUrl,
+    model: config2.model,
+    fallbackModels: config2.fallbackModels
+  });
   const deps = { github, glm, config: config2, workspace };
   if (command.name === "help") {
     await github.createIssueComment(trigger.pr, helpText(config2.triggerPrefix, config2.model));

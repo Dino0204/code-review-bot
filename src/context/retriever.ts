@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
-import { dirname, join, posix, basename, extname } from 'node:path'
+import { join, posix, basename, extname } from 'node:path'
+import { minimatch } from 'minimatch'
 import type { DiffFile } from '../github/diff'
 import type { BotConfig } from '../config'
 import { truncateMiddle } from './budget'
@@ -18,6 +19,34 @@ export interface RelatedFile extends FileSnapshot {
 }
 
 const CODE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs']
+
+/** 맥락으로 실어 보낼 가치가 있는 파일 확장자. 락파일·번들·라이선스 같은 잡음을 걸러낸다. */
+const CONTEXT_EXTENSIONS = new Set([
+  ...CODE_EXTENSIONS,
+  '.py',
+  '.go',
+  '.rs',
+  '.java',
+  '.kt',
+  '.rb',
+  '.php',
+  '.cs',
+  '.swift',
+  '.scala',
+  '.sql',
+  '.graphql',
+  '.gql',
+  '.vue',
+  '.svelte',
+  '.json',
+  '.yml',
+  '.yaml',
+  '.toml',
+  '.md',
+])
+
+/** 생성물이라 읽어봐야 소용없는 파일 (번들·최소화 결과물 등) */
+const GENERATED_PATTERNS = [/(^|\/)dist\//, /(^|\/)build\//, /\.min\.[cm]?js$/, /-lock\.json$/, /\.lock$/]
 const RESOLVE_SUFFIXES = [
   '',
   '.ts',
@@ -186,6 +215,7 @@ export function findRelatedFiles(workspace: string, diffFiles: DiffFile[], confi
   const add = (path: string, reason: string): void => {
     if (changedPaths.has(path) || picked.has(path)) return
     if (picked.size >= config.maxRelatedFiles) return
+    if (!isUsefulContextFile(path, config)) return
     picked.set(path, reason)
   }
 
@@ -235,6 +265,17 @@ export function findRelatedFiles(workspace: string, diffFiles: DiffFile[], confi
 
   log.info(`관련 파일 ${related.length}개 수집: ${related.map((file) => file.path).join(', ') || '(없음)'}`)
   return related
+}
+
+/**
+ * 관련 파일로 끌어올 만한 파일인지 판단한다.
+ * 리뷰 제외 패턴(dist, 락파일 등)은 맥락으로도 쓸모가 없다 — 특히 번들 결과물은
+ * 소스 전체를 품고 있어 어떤 심볼 검색에도 걸리면서 프롬프트만 잡아먹는다.
+ */
+export function isUsefulContextFile(path: string, config: BotConfig): boolean {
+  if (GENERATED_PATTERNS.some((pattern) => pattern.test(path))) return false
+  if (config.exclude.some((pattern) => minimatch(path, pattern, { dot: true }))) return false
+  return CONTEXT_EXTENSIONS.has(extname(path))
 }
 
 function escapeRegex(value: string): string {

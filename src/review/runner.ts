@@ -5,7 +5,7 @@ import type { GlmClient } from '../glm/client'
 import type { ExistingComment, GitHubClient, InlineComment, PullRequestInfo } from '../github/client'
 import type { DiffFile } from '../github/diff'
 import { parseUnifiedDiff, renderFileDiff, snapToCommentableLine } from '../github/diff'
-import { buildRepoMap } from '../context/repoMap'
+import { buildRepoMap, workspaceMatchesSha } from '../context/repoMap'
 import { findRelatedFiles, readChangedFiles } from '../context/retriever'
 import { buildPrHistory, loadCodebaseMemory, isBotComment, memoryFileTemplate } from '../context/memory'
 import { buildAskMessages, buildLearnMessages, buildReviewMessages, buildSummaryMessages } from './prompt'
@@ -52,11 +52,21 @@ export async function gatherContext(
     github.listReviewComments(pr.number),
   ])
 
+  // 워크스페이스가 PR head가 아니면 파일 전체 내용의 줄 번호가 diff와 어긋난다.
+  // 줄 번호를 담고 있는 컨텍스트만 빼고 나머지(리포 맵, 관련 파일)는 그대로 쓴다.
+  const atHead = workspaceMatchesSha(workspace, pr.headSha)
+  if (!atHead) {
+    log.warn(
+      `워크스페이스가 PR head(${pr.headSha.slice(0, 8)}) 상태가 아니라 변경 파일 전문을 컨텍스트에서 제외한다. ` +
+        '워크플로에서 `actions/checkout` 의 `ref` 를 PR head sha로 지정해야 리뷰 품질이 온전해진다.',
+    )
+  }
+
   const context: ReviewContext = {
     config,
     pr,
     diffFiles: selected,
-    changedFiles: readChangedFiles(workspace, selected, config),
+    changedFiles: atHead ? readChangedFiles(workspace, selected, config) : [],
     relatedFiles: findRelatedFiles(workspace, selected, config),
     repoMap: buildRepoMap(workspace),
     memory: loadCodebaseMemory(workspace, config),
@@ -126,7 +136,7 @@ export async function runReview(
     await github.createIssueComment(
       pr.number,
       renderPlainComment('🤖 코드 리뷰', '리뷰할 변경 사항이 없다. (제외 패턴에 걸렸거나 바이너리/삭제만 포함된 PR)', {
-        model: config.model,
+        model: glm.lastUsedModel,
         runUrl: github.runUrl(),
       }),
     )
@@ -169,7 +179,8 @@ export async function runReview(
   })
 
   const body = renderReviewSummary(merged, inline, overflow, {
-    model: config.model,
+    // 폴백이 걸렸을 수 있으니 설정값이 아니라 실제로 응답한 모델을 적는다
+    model: glm.lastUsedModel,
     reviewedFiles: context.diffFiles.length,
     skippedFiles,
     runUrl: github.runUrl(),
@@ -202,7 +213,7 @@ export async function runAsk(deps: RunnerDeps, pr: PullRequestInfo, question: st
   await github.createIssueComment(
     pr.number,
     renderPlainComment(`🤖 답변`, `> ${question.replace(/\n/g, '\n> ')}\n\n${answer.content}`, {
-      model: config.model,
+      model: glm.lastUsedModel,
       runUrl: github.runUrl(),
     }),
   )
@@ -218,7 +229,7 @@ export async function runSummary(deps: RunnerDeps, pr: PullRequestInfo): Promise
   })
   await github.createIssueComment(
     pr.number,
-    renderPlainComment('🤖 PR 요약', summary.content, { model: config.model, runUrl: github.runUrl() }),
+    renderPlainComment('🤖 PR 요약', summary.content, { model: glm.lastUsedModel, runUrl: github.runUrl() }),
   )
 }
 
@@ -242,7 +253,7 @@ export async function runLearn(deps: RunnerDeps, pr: PullRequestInfo): Promise<v
         renderPlainComment(
           '🧠 코드베이스 메모리 갱신',
           `\`${config.memoryFile}\` 을(를) \`${branch}\` 브랜치에 갱신했다.\n\n<details><summary>갱신된 내용</summary>\n\n${result.content}\n\n</details>`,
-          { model: config.model, runUrl: github.runUrl() },
+          { model: glm.lastUsedModel, runUrl: github.runUrl() },
         ),
       )
       return
@@ -263,7 +274,7 @@ export async function runLearn(deps: RunnerDeps, pr: PullRequestInfo): Promise<v
         content,
         '````',
       ].join('\n'),
-      { model: config.model, runUrl: github.runUrl() },
+      { model: glm.lastUsedModel, runUrl: github.runUrl() },
     ),
   )
 }

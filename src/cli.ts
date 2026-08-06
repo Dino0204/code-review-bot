@@ -82,7 +82,12 @@ async function main(): Promise<void> {
   const workspace = process.cwd()
   const config = loadConfig(workspace)
   const github = new GitHubClient(token, { owner, repo })
-  const glm = new GlmClient({ apiKey, baseUrl: config.baseUrl, model: config.model })
+  const glm = new GlmClient({
+    apiKey,
+    baseUrl: config.baseUrl,
+    model: config.model,
+    fallbackModels: config.fallbackModels,
+  })
   const deps: RunnerDeps = { github, glm, config, workspace }
 
   const pr = await github.getPullRequest(args.pr)
