@@ -1,0 +1,28 @@
+import { build } from 'esbuild'
+
+// GitHub Action 런타임(node20)에서 `npm install` 없이 바로 실행되도록
+// 의존성을 전부 번들링한다. CJS 전용 의존성이 섞여 있으므로 require 셰임을 주입한다.
+const banner = [
+  "import { createRequire as __createRequire } from 'node:module'",
+  "import { fileURLToPath as __fileURLToPath } from 'node:url'",
+  "import { dirname as __dirname_ } from 'node:path'",
+  'const require = __createRequire(import.meta.url)',
+  'const __filename = __fileURLToPath(import.meta.url)',
+  'const __dirname = __dirname_(__filename)',
+].join('\n')
+
+await build({
+  entryPoints: ['src/index.ts'],
+  outfile: 'dist/index.mjs',
+  bundle: true,
+  platform: 'node',
+  target: 'node20',
+  format: 'esm',
+  // 번들을 git에 커밋하므로 소스맵은 만들지 않는다 (커밋마다 3MB씩 늘어난다)
+  sourcemap: false,
+  minify: false,
+  legalComments: 'none',
+  banner: { js: banner },
+})
+
+console.log('built dist/index.mjs')

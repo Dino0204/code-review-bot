@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      # dist/ 가 소스와 어긋나면 액션이 옛 코드를 실행하게 된다
+      - name: dist가 최신인지 확인
+        run: |
+          if [ -n "$(git status --porcelain dist)" ]; then
+            echo "dist/ 가 소스와 다르다. 로컬에서 'npm run build' 후 커밋할 것."
+            git --no-pager diff --stat dist
+            exit 1
+          fi
