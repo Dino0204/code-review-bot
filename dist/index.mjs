@@ -26989,7 +26989,11 @@ function shouldTryNextModel(error52) {
   if (!(error52 instanceof GlmError)) return false;
   if (error52.retriable) return true;
   if (error52.status === 429 || error52.status === 503) return true;
+  if (error52.code === "length") return true;
   return ["1302", "1305", "1113"].includes(String(error52.code));
+}
+function isThinkingOverrun(error52) {
+  return error52 instanceof GlmError && error52.code === "length";
 }
 var GlmClient = class {
   apiKey;
@@ -27030,7 +27034,7 @@ var GlmClient = class {
     let lastError;
     for (const [index, model] of models.entries()) {
       try {
-        const result = await this.withRetries({ ...body, model });
+        const result = await this.attemptModel(model, body);
         if (index > 0) log.warn(`${this.model}\uC774(\uAC00) \uB9C9\uD600 ${model}\uB85C \uB9AC\uBDF0\uD588\uB2E4`);
         this.lastUsedModel = model;
         return result;
@@ -27043,6 +27047,23 @@ var GlmClient = class {
       }
     }
     throw lastError instanceof Error ? lastError : new GlmError("GLM \uD638\uCD9C \uC2E4\uD328");
+  }
+  /**
+   * 한 모델로 시도한다.
+   *
+   * reasoning이 max_tokens를 통째로 먹고 본문을 못 내는 경우가 있다(작은 diff에서도 발생).
+   * 예산을 더 준다고 해결되지 않으므로 thinking을 끄고 한 번 더 시도한다 —
+   * 리뷰 품질은 떨어지지만 아무 결과도 못 내는 것보다는 낫다.
+   */
+  async attemptModel(model, body) {
+    try {
+      return await this.withRetries({ ...body, model });
+    } catch (error52) {
+      const thinkingEnabled = body["thinking"]?.type === "enabled";
+      if (!isThinkingOverrun(error52) || !thinkingEnabled) throw error52;
+      log.warn(`${model}\uC758 reasoning\uC774 \uCD9C\uB825 \uC608\uC0B0\uC744 \uC18C\uC9C4\uD588\uB2E4 \u2014 thinking\uC744 \uB044\uACE0 \uB2E4\uC2DC \uC2DC\uB3C4\uD55C\uB2E4`);
+      return this.withRetries({ ...body, model, thinking: { type: "disabled" } });
+    }
   }
   async withRetries(body) {
     let lastError;
@@ -27149,7 +27170,7 @@ var GlmClient = class {
     const content = choice?.message?.content ?? "";
     if (!content.trim()) {
       const reason = choice?.finish_reason ?? "unknown";
-      const hint = reason === "length" ? " \u2014 reasoning \uD1A0\uD070\uC774 max_tokens\uB97C \uC18C\uC9C4\uD588\uB2E4. maxOutputTokens\uB97C \uC62C\uB824\uC57C \uD55C\uB2E4" : "";
+      const hint = reason === "length" ? " \u2014 reasoning\uC774 \uCD9C\uB825 \uC608\uC0B0\uC744 \uC18C\uC9C4\uD588\uB2E4" : "";
       throw new GlmError(
         `GLM\uC774 \uBE48 \uC751\uB2F5\uC744 \uBC18\uD658\uD588\uB2E4 (finish_reason=${reason})${hint}`,
         response.status,

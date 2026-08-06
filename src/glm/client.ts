@@ -88,7 +88,14 @@ function shouldTryNextModel(error: unknown): boolean {
   if (!(error instanceof GlmError)) return false
   if (error.retriable) return true
   if (error.status === 429 || error.status === 503) return true
+  // length: 이 모델이 출력 예산을 못 맞춘 것이므로 다른 모델은 될 수 있다
+  if (error.code === 'length') return true
   return ['1302', '1305', '1113'].includes(String(error.code))
+}
+
+/** reasoning이 max_tokens를 다 먹고 본문을 못 낸 상태 */
+function isThinkingOverrun(error: unknown): boolean {
+  return error instanceof GlmError && error.code === 'length'
 }
 
 /**
@@ -143,7 +150,7 @@ export class GlmClient {
 
     for (const [index, model] of models.entries()) {
       try {
-        const result = await this.withRetries({ ...body, model })
+        const result = await this.attemptModel(model, body)
         if (index > 0) log.warn(`${this.model}이(가) 막혀 ${model}로 리뷰했다`)
         this.lastUsedModel = model
         return result
@@ -158,6 +165,24 @@ export class GlmClient {
     }
 
     throw lastError instanceof Error ? lastError : new GlmError('GLM 호출 실패')
+  }
+
+  /**
+   * 한 모델로 시도한다.
+   *
+   * reasoning이 max_tokens를 통째로 먹고 본문을 못 내는 경우가 있다(작은 diff에서도 발생).
+   * 예산을 더 준다고 해결되지 않으므로 thinking을 끄고 한 번 더 시도한다 —
+   * 리뷰 품질은 떨어지지만 아무 결과도 못 내는 것보다는 낫다.
+   */
+  private async attemptModel(model: string, body: Record<string, unknown>): Promise<ChatResult> {
+    try {
+      return await this.withRetries({ ...body, model })
+    } catch (error) {
+      const thinkingEnabled = (body['thinking'] as { type?: string } | undefined)?.type === 'enabled'
+      if (!isThinkingOverrun(error) || !thinkingEnabled) throw error
+      log.warn(`${model}의 reasoning이 출력 예산을 소진했다 — thinking을 끄고 다시 시도한다`)
+      return this.withRetries({ ...body, model, thinking: { type: 'disabled' } })
+    }
   }
 
   private async withRetries(body: Record<string, unknown>): Promise<ChatResult> {
@@ -278,8 +303,8 @@ export class GlmClient {
     const content = choice?.message?.content ?? ''
     if (!content.trim()) {
       const reason = choice?.finish_reason ?? 'unknown'
-      // length면 reasoning 토큰이 max_tokens를 다 먹은 것이다 — 다시 불러도 같은 결과다
-      const hint = reason === 'length' ? ' — reasoning 토큰이 max_tokens를 소진했다. maxOutputTokens를 올려야 한다' : ''
+      // length면 reasoning이 max_tokens를 다 먹은 것이다 — 같은 조건으로 다시 불러도 같은 결과다
+      const hint = reason === 'length' ? ' — reasoning이 출력 예산을 소진했다' : ''
       throw new GlmError(
         `GLM이 빈 응답을 반환했다 (finish_reason=${reason})${hint}`,
         response.status,
