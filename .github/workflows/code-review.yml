@@ -23,7 +23,7 @@ jobs:
       github.event_name == 'pull_request' ||
       (github.event.issue.pull_request != null && startsWith(github.event.comment.body, '/'))
     runs-on: ubuntu-latest
-    # 무료 티어 재시도·폴백을 다 밟아도 이 안에서 끝나야 한다
+    # 자체 호스팅 모델이라 응답이 느리다. 재시도를 다 밟아도 이 안에서 끝나야 한다
     timeout-minutes: 30
     steps:
       - name: Resolve PR head
@@ -49,4 +49,4 @@ jobs:
       - name: Review
         uses: ./
         with:
-          zai-api-key: ${{ secrets.ZAI_API_KEY }}
+          gsml-api-key: ${{ secrets.GSML_API_KEY }}

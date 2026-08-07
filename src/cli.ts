@@ -6,7 +6,7 @@
  *   npm run review -- --repo owner/name --pr 12 --ask "이 변경이 캐시를 깨뜨리나?"
  */
 import { loadConfig } from './config'
-import { GlmClient } from './glm/client'
+import { LlmClient } from './llm/client'
 import { GitHubClient } from './github/client'
 import { gatherContext, runAsk, runLearn, runReview, runSummary, prepareFindings, chunkFiles } from './review/runner'
 import { buildReviewMessages } from './review/prompt'
@@ -75,20 +75,20 @@ async function main(): Promise<void> {
   if (!owner || !repo) throw new Error(`--repo 형식이 잘못됐다: ${slug}`)
 
   const token = process.env['GITHUB_TOKEN']
-  const apiKey = process.env['ZAI_API_KEY']
+  const apiKey = process.env['GSML_API_KEY']
   if (!token) throw new Error('GITHUB_TOKEN 환경변수가 필요하다')
-  if (!apiKey) throw new Error('ZAI_API_KEY 환경변수가 필요하다')
+  if (!apiKey) throw new Error('GSML_API_KEY 환경변수가 필요하다')
 
   const workspace = process.cwd()
   const config = loadConfig(workspace)
   const github = new GitHubClient(token, { owner, repo })
-  const glm = new GlmClient({
+  const llm = new LlmClient({
     apiKey,
     baseUrl: config.baseUrl,
     model: config.model,
     fallbackModels: config.fallbackModels,
   })
-  const deps: RunnerDeps = { github, glm, config, workspace }
+  const deps: RunnerDeps = { github, llm, config, workspace }
 
   const pr = await github.getPullRequest(args.pr)
   console.log(`PR #${pr.number} "${pr.title}" (${pr.headRef} → ${pr.baseRef})`)
@@ -102,10 +102,9 @@ async function main(): Promise<void> {
     const messages = buildReviewMessages({ ...context, diffFiles: chunks[0] ?? [] })
     console.log(`프롬프트 길이: ${messages.map((message) => message.content.length).reduce((a, b) => a + b, 0)}자`)
 
-    const result = await glm.chatJson(messages, reviewResultSchema, {
+    const result = await llm.chatJson(messages, reviewResultSchema, {
       temperature: config.temperature,
       maxTokens: config.maxOutputTokens,
-      thinking: config.thinking,
     })
     const { inline, overflow } = prepareFindings(result, context.diffFiles, config, new Set())
 
@@ -114,7 +113,7 @@ async function main(): Promise<void> {
       console.log(`${SEVERITY_LABEL[finding.severity]} ${finding.file}:${finding.line} — ${finding.title}`)
       console.log(`   ${finding.detail.replace(/\n/g, '\n   ')}\n`)
     }
-    console.log(`토큰: ${glm.totalUsage.prompt_tokens} in / ${glm.totalUsage.completion_tokens} out`)
+    console.log(`토큰: ${llm.totalUsage.prompt_tokens} in / ${llm.totalUsage.completion_tokens} out`)
     return
   }
 

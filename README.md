@@ -1,9 +1,9 @@
-# GLM Code Review Bot
+# GSML Code Review Bot
 
-[z.ai GLM-4.7-Flash](https://docs.z.ai/guides/llm/glm-4.7)로 GitHub Pull Request를 리뷰하고, 결과를 **인라인 리뷰 코멘트**로 남기는 GitHub Action이다. `gemini-code-assist` 대체용으로 만들었다.
+GSML 게이트웨이의 모델로 GitHub Pull Request를 리뷰하고, 결과를 **인라인 리뷰 코멘트**로 남기는 GitHub Action이다. `gemini-code-assist` 대체용으로 만들었다.
 
-- **코드가 OpenAI로 나가지 않는다.** z.ai API를 fetch로 직접 호출한다. OpenAI SDK나 게이트웨이를 거치지 않는다.
-- **모델 비용 0원.** `glm-4.7-flash`는 무료 티어다 (200K 컨텍스트 / 128K 출력).
+- **코드가 상용 LLM 제공자로 나가지 않는다.** GSML은 학교에서 직접 서빙하는 모델이고, OpenAI 호환 엔드포인트를 fetch로 직접 호출한다. OpenAI SDK나 중계 게이트웨이를 거치지 않는다.
+- **모델 비용 0원.** 하루 13,107,200 토큰까지 쓸 수 있다 (컨텍스트 131K).
 - **코드베이스 맥락을 안다.** diff만 던지지 않고, 변경 파일의 전체 내용 + import 그래프 + 호출부 + 리포지토리 메모리를 함께 넣는다.
 - **코멘트로 트리거한다.** PR에 `/review` 한 줄이면 된다.
 - TypeScript로 작성했고 외부 런타임 의존이 없다 (번들 하나로 실행).
@@ -12,10 +12,12 @@
 
 ## 빠른 시작
 
-### 1. z.ai API 키 발급
+### 1. GSML API 키 발급
 
-[z.ai 콘솔](https://z.ai/manage-apikey/apikey-list)에서 키를 발급받아, 리뷰를 붙일 리포지토리의
-**Settings → Secrets and variables → Actions** 에 `ZAI_API_KEY` 로 등록한다.
+[GSML 콘솔](https://gsmsv.site)에서 키를 발급받아, 리뷰를 붙일 리포지토리의
+**Settings → Secrets and variables → Actions** 에 `GSML_API_KEY` 로 등록한다.
+
+키에는 만료일이 있다. 만료되면 리뷰가 401로 실패하므로 콘솔에서 연장하거나 재발급한다.
 
 ### 2. 워크플로 추가
 
@@ -65,7 +67,7 @@ jobs:
 
       - uses: it-play/Code-Review-Bot@main
         with:
-          zai-api-key: ${{ secrets.ZAI_API_KEY }}
+          gsml-api-key: ${{ secrets.GSML_API_KEY }}
 ```
 
 ### 3. 끝
@@ -116,7 +118,7 @@ diff 자체가 예산을 넘으면 파일 단위로 청크를 나눠 여러 번 
 리포지토리 루트의 `.reviewbot/config.yml` 로 조정한다. 전체 항목은 [이 리포의 예시](.reviewbot/config.yml) 참고.
 
 ```yaml
-model: glm-4.7-flash
+model: darwin-35b-q4_k_m.gguf
 language: ko
 minSeverity: minor # 이 미만은 코멘트하지 않는다
 maxInlineComments: 25
@@ -131,10 +133,11 @@ customInstructions: |
 
 | input | 기본값 | 설명 |
 | --- | --- | --- |
-| `zai-api-key` | (필수) | z.ai API 키 |
+| `gsml-api-key` | (필수) | GSML API 키 |
 | `github-token` | `${{ github.token }}` | 코멘트 작성용 토큰 |
-| `model` | `glm-4.7-flash` | `glm-4.7-flashx`, `glm-4.7` 등으로 교체 가능 (유료 모델은 잔액 필요) |
-| `fallback-models` | `glm-4.5-flash` | 기본 모델이 막힐 때 시도할 대체 모델 (쉼표 구분) |
+| `model` | `darwin-35b-q4_k_m.gguf` | GSML이 서빙하는 모델 ID. `/v1/models` 로 확인한다 |
+| `base-url` | `http://ssh.gsmsv.site:26145/v1` | 다른 OpenAI 호환 서버를 쓸 때 교체한다 |
+| `fallback-models` | (없음) | 기본 모델이 막힐 때 시도할 대체 모델 (쉼표 구분) |
 | `language` | `ko` | `en`, `ja`, `zh` |
 | `min-severity` | `minor` | `critical` / `major` / `minor` / `nit` |
 | `auto-review` | `true` | PR 이벤트 시 자동 리뷰 |
@@ -153,38 +156,41 @@ LLM 리뷰가 흔히 망하는 지점들을 코드로 막아뒀다.
 - **리뷰 전체가 422로 거절** — 인라인 코멘트가 하나라도 위치 검증에 실패하면 GitHub은 리뷰 전체를 거절한다. 실패 시 요약만 다시 게시해 결과가 사라지지 않게 한다.
 - **같은 말 반복** — 기존 봇 코멘트에서 제목을 되뽑아 `파일:줄:제목` 키로 중복을 걸러낸다.
 - **깨진 JSON** — `response_format: json_object` 로 요청하고, 코드펜스가 섞여도 균형 잡힌 JSON을 추출한다. 스키마가 안 맞으면 오류를 붙여 한 번 교정을 요청한다.
+- **추론 초안이 리뷰로 게시되는 사고** — 이 모델은 본문 앞에 `<think>...</think>` 블록을 붙이는데, 그 안에 답안 JSON 초안이 그대로 들어 있는 경우가 많다. 블록을 먼저 떼어낸 뒤에 JSON을 찾는다.
 - **추측성 지적** — 확신도를 함께 받아 `minConfidence` 미만은 버리고, 0.7 미만은 코멘트에 "오탐일 수 있다"를 붙인다.
 - **nit 폭격** — 심각도 임계값과 인라인 개수 상한을 둔다.
 
-## 무료 티어에서 알아둘 것
+## GSML을 쓸 때 알아둘 것
 
-무료 모델에는 **동시 실행 한도(concurrency limit)** 가 있다. z.ai 콘솔의
-[rate limits](https://z.ai/manage-apikey/rate-limits) 에서 확인할 수 있고, 실측값은 다음과 같다.
+GSML은 학교에서 직접 돌리는 llama.cpp 서버다. 상용 API와 다른 점이 몇 가지 있고, 클라이언트가 그 차이를 흡수한다.
 
-| 모델 | 동시 실행 한도 |
-| --- | --- |
-| `glm-4.7-flash` | **1** |
-| `glm-4.5-flash` | **2** |
+**추론을 끌 수 없다.** 모델이 항상 본문 앞에 `<think>...</think>` 블록을 붙이고, 그 추론 토큰도
+`maxOutputTokens` 를 함께 소비한다. `enable_thinking: false` 같은 옵션은 무시된다. 그래서
+`thinking` 설정 항목은 없앴다 — 켜고 끌 수 없는 것을 설정으로 두면 거짓말이 된다.
+추론 블록 안에는 모델이 검토하던 답안 JSON 초안이 들어 있는 경우가 많아서, JSON을 찾기 전에 반드시 떼어낸다.
 
-한도 1은 계정 전체에서 한 번에 요청 하나라는 뜻이다. 리뷰 하나가 몇 분간 그 슬롯을 점유하면
-그동안 들어오는 모든 요청이 429(`1302 rate limit` 또는 `1305 overloaded`)로 떨어진다.
-**클라이언트가 타임아웃으로 연결을 끊어도 서버는 계속 처리하며 슬롯을 물고 있다** — 성급하게 끊으면
-슬롯만 낭비하고 스스로를 막는다. 그래서 이렇게 대응한다.
+**응답이 잘려도 `finish_reason` 이 `stop` 으로 온다.** 규격대로라면 `length` 여야 하지만 그렇지 않다.
+그래서 `completion_tokens` 가 요청한 `max_tokens` 에 닿았는지로 직접 판별한다.
+잘린 것을 확인하면 출력 예산을 두 배(상한 32768)로 올려 한 번 더 부른다. 그래도 잘리면 `maxFiles` 를 줄여야 한다.
 
-1. 요청 타임아웃을 300초로 넉넉히 잡는다 (중도 포기가 손해다)
-2. 재시도 간격을 8초에서 시작해 60초까지 벌린다 (`Retry-After` 헤더가 있으면 그쪽을 따른다)
-3. 모델당 4회까지 버티고, 그래도 막히면 `fallbackModels` 의 다음 모델로 전환한다 —
-   기본값 `glm-4.5-flash` 는 별도 슬롯(한도 2)을 쓰므로 실제로 통한다
-4. reasoning이 출력 예산을 소진하면(`finish_reason: length`) thinking을 끄고 한 번 더 시도한다
+**모델이 하나뿐이다.** `/v1/models` 에 뜨는 모델 하나만 서빙하므로 `fallbackModels` 기본값이 비어 있다.
+용량이 부족하면 8초에서 60초까지 벌려가며 4회까지 재시도한다 (`Retry-After` 헤더가 있으면 그쪽을 따른다).
 
-**여러 PR을 동시에 리뷰한다면 호출을 직렬화해야 한다.** 한도가 1인 이상, 병렬로 보내면 서로를 밀어낸다.
+**느리다.** 35B 모델을 로컬 GPU에서 돌리므로 큰 프롬프트 하나에 몇 분이 걸린다.
+요청 타임아웃은 600초다 — 클라이언트가 먼저 끊어도 서버는 계속 처리하며 슬롯을 물고 있으니 중도 포기가 손해다.
+**여러 PR을 동시에 리뷰한다면 호출을 직렬화하는 편이 안전하다.**
 
-실제로 응답한 모델은 리뷰 코멘트 하단에 표시된다. 폴백이 자주 걸린다면 z.ai 콘솔에서 잔액을 충전하고
-`model: glm-4.7-flashx` 로 바꾸는 편이 낫다 — 입력 $0.07 / 출력 $0.4 per 1M 토큰이라, 이 리포지토리
-전체(약 70K 입력 토큰) 리뷰 한 번이 1센트 미만이다.
+**컨텍스트는 131,072토큰이고 출력도 여기서 나눠 쓴다.** 기본값은 프롬프트 140,000자(≈40K 토큰) +
+출력 16,384토큰이라 여유가 있다. 하루 한도는 13,107,200토큰이고 콘솔에서 사용량을 볼 수 있다.
 
-**주의:** `thinking: true` 일 때 reasoning 토큰도 `maxOutputTokens` 를 소비한다. 부족하면 `finish_reason: length` 로
-JSON이 잘린 채 돌아온다. 기본값 24576은 그 여유를 감안한 값이다.
+### 주의: 엔드포인트가 평문 HTTP다
+
+기본 base URL `http://ssh.gsmsv.site:26145/v1` 은 TLS가 아니다. **API 키가 Authorization 헤더에 평문으로 실려 나가고,
+리뷰 대상 코드도 암호화 없이 오간다.** 사내망 밖(예: GitHub Actions 러너)에서 호출한다면 이 점을 감수하는 것이다.
+서버에 HTTPS가 붙으면 `base-url` 을 그쪽으로 바꾸는 것이 좋다.
+
+GitHub Actions에서 쓰려면 러너가 `ssh.gsmsv.site:26145` 에 닿을 수 있어야 한다.
+학교 네트워크 안에서만 열려 있다면 Actions에서는 실패하고 로컬 실행(`npm run review`)만 동작한다.
 
 ---
 
@@ -192,7 +198,7 @@ JSON이 잘린 채 돌아온다. 기본값 24576은 그 여유를 감안한 값�
 
 ```bash
 npm install
-cp .env.example .env   # ZAI_API_KEY, GITHUB_TOKEN 채우기
+cp .env.example .env   # GSML_API_KEY, GITHUB_TOKEN 채우기
 
 # 게시하지 않고 결과만 확인
 npm run review -- --repo it-play/Code-Review-Bot --pr 12 --dry-run
@@ -209,7 +215,7 @@ npm run review -- --repo it-play/Code-Review-Bot --pr 12 --ask "이 변경이 �
 ## gemini-code-assist에서 갈아타기
 
 1. 리포지토리 설정에서 gemini-code-assist GitHub App을 제거하거나, `.gemini/config.yaml` 에서 자동 리뷰를 끈다.
-2. 위 워크플로를 추가하고 `ZAI_API_KEY` 시크릿을 등록한다.
+2. 위 워크플로를 추가하고 `GSML_API_KEY` 시크릿을 등록한다.
 3. 기존에 `.gemini/styleguide.md` 를 쓰고 있었다면 그 내용을 `.reviewbot/context.md` 로 옮긴다 — 매 리뷰에 그대로 실린다.
 
 트리거는 `/gemini review` → `/review`, `/gemini summary` → `/summary` 로 대응된다.
@@ -232,7 +238,7 @@ src/
   index.ts          GitHub Actions 진입점 · 이벤트 라우팅
   cli.ts            로컬 실행용 CLI
   config.ts         기본값 → .reviewbot/config.yml → 액션 input 병합
-  glm/client.ts     z.ai 호출 · 재시도 · JSON 검증/교정
+  llm/client.ts     OpenAI 호환 호출 · 재시도 · 추론 블록 분리 · JSON 검증/교정
   github/
     event.ts        이벤트 페이로드 → 트리거 정규화
     client.ts       Octokit 래퍼 (리뷰 게시, 권한 확인, 파일 커밋)

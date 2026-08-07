@@ -44,7 +44,7 @@ export class GitHubClient {
     token: string,
     readonly repo: RepoRef,
   ) {
-    this.octokit = new Octokit({ auth: token, userAgent: 'glm-code-review-bot' })
+    this.octokit = new Octokit({ auth: token, userAgent: 'gsml-code-review-bot' })
   }
 
   async getPullRequest(number: number): Promise<PullRequestInfo> {

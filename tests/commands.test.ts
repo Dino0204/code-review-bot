@@ -45,6 +45,6 @@ test('명령이 없으면 undefined', () => {
 })
 
 test('트리거 접두사를 바꿀 수 있다', () => {
-  assert.deepEqual(parseCommand('/glm', '/glm'), { name: 'review', focus: '', full: false })
-  assert.equal(parseCommand('/review', '/glm'), undefined)
+  assert.deepEqual(parseCommand('/gsml', '/gsml'), { name: 'review', focus: '', full: false })
+  assert.equal(parseCommand('/review', '/gsml'), undefined)
 })

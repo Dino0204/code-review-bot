@@ -6,7 +6,7 @@ import { parseUnifiedDiff } from '../src/github/diff'
 import { dedupeKey, prepareFindings, resolveFile, filterFiles } from '../src/review/runner'
 import type { ReviewResult } from '../src/review/schema'
 import { extractFindingTitle } from '../src/review/render'
-import { extractJsonObject } from '../src/glm/client'
+import { extractJsonObject } from '../src/llm/client'
 
 const DIFF = `diff --git a/src/user.ts b/src/user.ts
 --- a/src/user.ts

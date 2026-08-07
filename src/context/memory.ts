@@ -4,6 +4,8 @@ import type { BotConfig } from '../config'
 import type { ExistingComment } from '../github/client'
 import { truncate } from './budget'
 
+// 이미 게시된 코멘트를 자기 것으로 알아보는 표식이다. 바꾸면 과거 코멘트를 못 찾아
+// 같은 지적을 다시 달게 되므로, 모델 제공자가 바뀌어도 이 문자열은 그대로 둔다.
 export const BOT_MARKER = '<!-- glm-code-review-bot -->'
 
 export interface CodebaseMemory {
@@ -86,7 +88,7 @@ export function memoryFileTemplate(body: string, prNumber: number, prTitle: stri
   return [
     '# 코드베이스 메모리',
     '',
-    '> glm-code-review-bot이 `/review learn` 으로 갱신하는 파일이다.',
+    '> 코드 리뷰 봇이 `/review learn` 으로 갱신하는 파일이다.',
     '> 사람이 직접 편집해도 되며, 다음 학습 때 기존 내용을 근거로 병합된다.',
     '',
     body.trim(),

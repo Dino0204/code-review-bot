@@ -7,18 +7,16 @@ export const SEVERITIES = ['critical', 'major', 'minor', 'nit'] as const
 export type Severity = (typeof SEVERITIES)[number]
 
 export interface BotConfig {
-  /** z.ai 모델 ID */
+  /** 모델 ID */
   model: string
-  /** 기본 모델이 용량 부족(429/1305/1113)으로 막힐 때 순서대로 시도할 대체 모델 */
+  /** 기본 모델이 용량 부족으로 막힐 때 순서대로 시도할 대체 모델 */
   fallbackModels: string[]
-  /** z.ai API base URL (버전 경로까지 포함) */
+  /** OpenAI 호환 API base URL (버전 경로까지 포함) */
   baseUrl: string
   /** 리뷰 코멘트 언어 */
   language: string
   temperature: number
   maxOutputTokens: number
-  /** thinking(chain-of-thought) 모드 사용 여부 */
-  thinking: boolean
 
   /** 프롬프트 1회 호출에 실어보낼 최대 문자 수 (대략 4자 ≈ 1토큰) */
   maxPromptChars: number
@@ -58,19 +56,20 @@ export interface BotConfig {
 }
 
 export const DEFAULT_CONFIG: BotConfig = {
-  model: 'glm-4.7-flash',
-  // glm-4.7-flash는 무료 공용 용량이라 혼잡할 때 통째로 막힌다(코드 1305).
-  // 같은 무료 티어인 glm-4.5-flash로 폴백해 리뷰가 통째로 실패하는 것을 막는다.
-  fallbackModels: ['glm-4.5-flash'],
-  baseUrl: 'https://api.z.ai/api/paas/v4',
+  // GSML 게이트웨이는 모델 하나만 서빙한다. 모델 ID는 /v1/models 로 확인한다.
+  model: 'darwin-35b-q4_k_m.gguf',
+  // 단일 모델이라 넘어갈 곳이 없다. 여러 모델을 서빙하는 게이트웨이로 바꾸면 여기에 채운다.
+  fallbackModels: [],
+  baseUrl: 'http://ssh.gsmsv.site:26145/v1',
   language: 'ko',
   temperature: 0.2,
-  // thinking을 켜면 reasoning 토큰이 max_tokens를 함께 소비한다(관측: 128토큰 응답 중 113이 reasoning).
-  // 부족하면 finish_reason=length로 JSON이 잘리므로 넉넉히 잡는다. 쓰지 않은 토큰에는 비용이 없다.
-  maxOutputTokens: 24576,
-  thinking: true,
+  // 이 모델은 추론을 끌 수 없고, 그 추론 토큰이 max_tokens를 함께 소비한다.
+  // 부족하면 응답이 잘리므로 넉넉히 잡는다 — 잘리면 클라이언트가 예산을 두 배로 올려 한 번 더 시도한다.
+  maxOutputTokens: 16384,
 
-  maxPromptChars: 320_000,
+  // 컨텍스트 창은 131,072토큰이고 출력도 여기서 나눠 쓴다.
+  // 코드 기준 대략 3.5자 ≈ 1토큰이라 이 값이 4만 토큰 언저리다 — 출력 예산을 빼도 여유가 있다.
+  maxPromptChars: 140_000,
   maxFiles: 40,
   maxFileChars: 24_000,
   maxRelatedFiles: 12,
@@ -147,7 +146,7 @@ function pickFileConfig(raw: unknown): Partial<BotConfig> {
     if (typeof r[key] === 'number' && Number.isFinite(r[key])) out[key] = r[key] as number
   }
 
-  const booleans = ['thinking', 'autoReview', 'memoryAutoCommit'] as const
+  const booleans = ['autoReview', 'memoryAutoCommit'] as const
   for (const key of booleans) {
     if (typeof r[key] === 'boolean') out[key] = r[key] as boolean
   }
@@ -183,7 +182,6 @@ function envOverrides(): Partial<BotConfig> {
     out.minSeverity = env['REVIEWBOT_MIN_SEVERITY'] as Severity
   }
   if (env['REVIEWBOT_AUTO_REVIEW']) out.autoReview = env['REVIEWBOT_AUTO_REVIEW'] !== 'false'
-  if (env['REVIEWBOT_THINKING']) out.thinking = env['REVIEWBOT_THINKING'] !== 'false'
   if (env['REVIEWBOT_MAX_FILES']) {
     const n = Number(env['REVIEWBOT_MAX_FILES'])
     if (Number.isFinite(n)) out.maxFiles = n

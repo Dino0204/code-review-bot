@@ -1,7 +1,7 @@
 import { minimatch } from 'minimatch'
 import type { BotConfig } from '../config'
 import { meetsSeverity } from '../config'
-import type { GlmClient } from '../glm/client'
+import type { LlmClient } from '../llm/client'
 import type { ExistingComment, GitHubClient, InlineComment, PullRequestInfo } from '../github/client'
 import type { DiffFile } from '../github/diff'
 import { parseUnifiedDiff, renderFileDiff, snapToCommentableLine } from '../github/diff'
@@ -17,7 +17,7 @@ import { log } from '../logger'
 
 export interface RunnerDeps {
   github: GitHubClient
-  glm: GlmClient
+  llm: LlmClient
   config: BotConfig
   workspace: string
 }
@@ -129,14 +129,14 @@ export async function runReview(
   pr: PullRequestInfo,
   options: GatherOptions = {},
 ): Promise<ReviewOutcome> {
-  const { github, glm, config } = deps
+  const { github, llm, config } = deps
   const { context, skippedFiles, reviewComments } = await gatherContext(deps, pr, options)
 
   if (context.diffFiles.length === 0) {
     await github.createIssueComment(
       pr.number,
       renderPlainComment('🤖 코드 리뷰', '리뷰할 변경 사항이 없다. (제외 패턴에 걸렸거나 바이너리/삭제만 포함된 PR)', {
-        model: glm.lastUsedModel,
+        model: llm.lastUsedModel,
         runUrl: github.runUrl(),
       }),
     )
@@ -150,10 +150,9 @@ export async function runReview(
   for (const [index, chunk] of chunks.entries()) {
     if (chunks.length > 1) log.info(`청크 ${index + 1}/${chunks.length} 리뷰 중 (${chunk.length}개 파일)`)
     const chunkContext: ReviewContext = { ...context, diffFiles: chunk }
-    const result = await glm.chatJson(buildReviewMessages(chunkContext), reviewResultSchema, {
+    const result = await llm.chatJson(buildReviewMessages(chunkContext), reviewResultSchema, {
       temperature: config.temperature,
       maxTokens: config.maxOutputTokens,
-      thinking: config.thinking,
     })
     results.push(result)
   }
@@ -180,12 +179,12 @@ export async function runReview(
 
   const body = renderReviewSummary(merged, inline, overflow, {
     // 폴백이 걸렸을 수 있으니 설정값이 아니라 실제로 응답한 모델을 적는다
-    model: glm.lastUsedModel,
+    model: llm.lastUsedModel,
     reviewedFiles: context.diffFiles.length,
     skippedFiles,
     runUrl: github.runUrl(),
-    promptTokens: glm.totalUsage.prompt_tokens,
-    completionTokens: glm.totalUsage.completion_tokens,
+    promptTokens: llm.totalUsage.prompt_tokens,
+    completionTokens: llm.totalUsage.completion_tokens,
     chunks: chunks.length,
   }, config)
 
@@ -203,43 +202,40 @@ export async function runReview(
 }
 
 export async function runAsk(deps: RunnerDeps, pr: PullRequestInfo, question: string): Promise<void> {
-  const { github, glm, config } = deps
+  const { github, llm, config } = deps
   const { context } = await gatherContext(deps, pr)
-  const answer = await glm.chat(buildAskMessages(context, question), {
+  const answer = await llm.chat(buildAskMessages(context, question), {
     temperature: 0.3,
     maxTokens: config.maxOutputTokens,
-    thinking: config.thinking,
   })
   await github.createIssueComment(
     pr.number,
     renderPlainComment(`🤖 답변`, `> ${question.replace(/\n/g, '\n> ')}\n\n${answer.content}`, {
-      model: glm.lastUsedModel,
+      model: llm.lastUsedModel,
       runUrl: github.runUrl(),
     }),
   )
 }
 
 export async function runSummary(deps: RunnerDeps, pr: PullRequestInfo): Promise<void> {
-  const { github, glm, config } = deps
+  const { github, llm, config } = deps
   const { context } = await gatherContext(deps, pr)
-  const summary = await glm.chat(buildSummaryMessages(context), {
+  const summary = await llm.chat(buildSummaryMessages(context), {
     temperature: 0.2,
     maxTokens: config.maxOutputTokens,
-    thinking: config.thinking,
   })
   await github.createIssueComment(
     pr.number,
-    renderPlainComment('🤖 PR 요약', summary.content, { model: glm.lastUsedModel, runUrl: github.runUrl() }),
+    renderPlainComment('🤖 PR 요약', summary.content, { model: llm.lastUsedModel, runUrl: github.runUrl() }),
   )
 }
 
 export async function runLearn(deps: RunnerDeps, pr: PullRequestInfo): Promise<void> {
-  const { github, glm, config } = deps
+  const { github, llm, config } = deps
   const { context } = await gatherContext(deps, pr)
-  const result = await glm.chat(buildLearnMessages(context), {
+  const result = await llm.chat(buildLearnMessages(context), {
     temperature: 0.3,
     maxTokens: 4096,
-    thinking: config.thinking,
   })
 
   const content = memoryFileTemplate(result.content, pr.number, pr.title)
@@ -253,7 +249,7 @@ export async function runLearn(deps: RunnerDeps, pr: PullRequestInfo): Promise<v
         renderPlainComment(
           '🧠 코드베이스 메모리 갱신',
           `\`${config.memoryFile}\` 을(를) \`${branch}\` 브랜치에 갱신했다.\n\n<details><summary>갱신된 내용</summary>\n\n${result.content}\n\n</details>`,
-          { model: glm.lastUsedModel, runUrl: github.runUrl() },
+          { model: llm.lastUsedModel, runUrl: github.runUrl() },
         ),
       )
       return
@@ -274,7 +270,7 @@ export async function runLearn(deps: RunnerDeps, pr: PullRequestInfo): Promise<v
         content,
         '````',
       ].join('\n'),
-      { model: glm.lastUsedModel, runUrl: github.runUrl() },
+      { model: llm.lastUsedModel, runUrl: github.runUrl() },
     ),
   )
 }

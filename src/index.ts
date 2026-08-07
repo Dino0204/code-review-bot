@@ -1,6 +1,6 @@
 import * as core from '@actions/core'
 import { loadConfig } from './config'
-import { GlmClient } from './glm/client'
+import { LlmClient } from './llm/client'
 import { GitHubClient } from './github/client'
 import { isBotActor, isTrustedAssociation, readRepoRef, resolveTrigger } from './github/event'
 import type { Trigger } from './github/event'
@@ -14,7 +14,7 @@ import { log } from './logger'
 /** action.yml의 input을 환경변수 형태로 옮겨 config 로더가 한 곳만 보게 한다 */
 function applyActionInputs(): void {
   const mapping: Array<[input: string, env: string]> = [
-    ['zai-api-key', 'ZAI_API_KEY'],
+    ['gsml-api-key', 'GSML_API_KEY'],
     ['github-token', 'GITHUB_TOKEN'],
     ['model', 'REVIEWBOT_MODEL'],
     ['fallback-models', 'REVIEWBOT_FALLBACK_MODELS'],
@@ -72,8 +72,8 @@ async function main(): Promise<void> {
 
   const token = process.env['GITHUB_TOKEN']
   if (!token) throw new Error('GITHUB_TOKEN이 없다 — 워크플로에서 전달해야 한다')
-  const apiKey = process.env['ZAI_API_KEY']
-  if (!apiKey) throw new Error('ZAI_API_KEY가 없다 — 리포지토리 시크릿에 등록해야 한다')
+  const apiKey = process.env['GSML_API_KEY']
+  if (!apiKey) throw new Error('GSML_API_KEY가 없다 — 리포지토리 시크릿에 등록해야 한다')
   log.mask(apiKey)
 
   const github = new GitHubClient(token, readRepoRef())
@@ -90,13 +90,13 @@ async function main(): Promise<void> {
     await github.addReaction(trigger.commentId, 'eyes')
   }
 
-  const glm = new GlmClient({
+  const llm = new LlmClient({
     apiKey,
     baseUrl: config.baseUrl,
     model: config.model,
     fallbackModels: config.fallbackModels,
   })
-  const deps: RunnerDeps = { github, glm, config, workspace }
+  const deps: RunnerDeps = { github, llm, config, workspace }
 
   if (command.name === 'help') {
     await github.createIssueComment(trigger.pr, helpText(config.triggerPrefix, config.model))
@@ -126,8 +126,8 @@ async function main(): Promise<void> {
         break
     }
 
-    core.setOutput('prompt_tokens', String(glm.totalUsage.prompt_tokens))
-    core.setOutput('completion_tokens', String(glm.totalUsage.completion_tokens))
+    core.setOutput('prompt_tokens', String(llm.totalUsage.prompt_tokens))
+    core.setOutput('completion_tokens', String(llm.totalUsage.completion_tokens))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     log.error(message)

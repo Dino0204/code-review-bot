@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../glm/client'
+import type { ChatMessage } from '../llm/client'
 import type { BotConfig } from '../config'
 import type { PullRequestInfo } from '../github/client'
 import type { DiffFile } from '../github/diff'
