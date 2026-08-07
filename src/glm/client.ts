@@ -122,7 +122,9 @@ export class GlmClient {
     this.model = options.model
     this.lastUsedModel = options.model
     this.fallbackModels = (options.fallbackModels ?? []).filter((model) => model !== options.model)
-    // 무료 티어는 요청을 큐에 넣고 늦게 처리한다. thinking을 켠 대형 프롬프트는 몇 분씩 걸린다.
+    // thinking을 켠 대형 프롬프트는 몇 분씩 걸린다. 그리고 동시 실행 한도가 1인 모델에서는
+    // 클라이언트가 타임아웃으로 끊어도 서버는 계속 처리하며 슬롯을 물고 있다 —
+    // 성급하게 끊으면 슬롯만 낭비하고 스스로를 막는다. 넉넉히 기다린다.
     this.timeoutMs = options.timeoutMs ?? 300_000
     // 무료 모델은 공용 용량이 혼잡해 429가 흔하다. 모델당 이만큼 버티고 다음 모델로 넘어간다.
     this.maxRetries = options.maxRetries ?? 4
@@ -189,8 +191,11 @@ export class GlmClient {
     let lastError: unknown
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       if (attempt > 0) {
+        // 무료 모델의 동시 실행 한도는 1~2다(4.7-flash=1, 4.5-flash=2).
+        // 슬롯을 점유한 다른 리뷰는 몇 분씩 걸리므로, 몇 초 뒤에 다시 두드려봐야 낭비다.
+        // 8초에서 시작해 1분까지 벌린다.
         const serverHint = lastError instanceof GlmError ? lastError.retryAfterMs : undefined
-        const backoff = Math.min(60_000, 2 ** attempt * 2000) + Math.floor(Math.random() * 1000)
+        const backoff = Math.min(60_000, 2 ** (attempt - 1) * 8000) + Math.floor(Math.random() * 2000)
         const delay = Math.max(serverHint ?? 0, backoff)
         log.warn(`GLM 호출 재시도 ${attempt}/${this.maxRetries} — ${Math.round(delay / 1000)}초 대기`)
         await sleep(delay)
