@@ -19,7 +19,28 @@ GSML 게이트웨이의 모델로 GitHub Pull Request를 리뷰하고, 결과를
 
 키에는 만료일이 있다. 만료되면 리뷰가 401로 실패하므로 콘솔에서 연장하거나 재발급한다.
 
-### 2. 워크플로 추가
+### 2. GitHub App 연결 (선택)
+
+기본값으로도 동작하지만, 그때 리뷰 코멘트는 `github-actions[bot]` 이름으로 달린다.
+봇에 고유한 이름과 아바타를 주려면 GitHub App을 만들어 신원으로 쓴다.
+
+이 App은 **웹훅을 받지 않는다.** 트리거는 워크플로의 `on:` 이벤트가 담당하고,
+App은 API를 부를 때의 신원으로만 쓰인다. 그래서 Webhook URL은 비워도 된다.
+
+1. **Settings → Developer settings → GitHub Apps → New GitHub App** 에서 App을 만든다.
+   - Repository permissions: **Pull requests** `Read & write`, **Issues** `Read & write`, **Contents** `Read-only`
+     (`memoryAutoCommit: true` 를 쓸 거라면 Contents도 `Read & write`)
+   - Webhook: **Active 체크 해제**
+2. App 설정에서 **Private key** 를 발급해 `.pem` 파일을 받는다.
+3. App을 리뷰 대상 리포지토리에 **Install** 한다.
+4. 리포지토리 시크릿에 두 개를 등록한다.
+   - `REVIEW_APP_ID` — App 설정 상단의 App ID (숫자)
+   - `REVIEW_APP_PRIVATE_KEY` — `.pem` 파일 **내용 전체** (`-----BEGIN...` 줄 포함)
+
+`isBotActor` 가 `[bot]` 으로 끝나는 작성자를 걸러내므로, App이 남긴 코멘트에 봇이
+스스로 다시 반응하는 루프는 생기지 않는다.
+
+### 3. 워크플로 추가
 
 리뷰 대상 리포지토리에 `.github/workflows/code-review.yml` 을 만든다.
 
@@ -48,10 +69,19 @@ jobs:
       (github.event.issue.pull_request != null && startsWith(github.event.comment.body, '/'))
     runs-on: ubuntu-latest
     steps:
+      # App을 안 쓸 거라면 이 스텝과 아래 두 곳의 `token:` 을 지운다.
+      # 그러면 ${{ github.token }} 으로 동작하고, 코멘트는 github-actions[bot] 이름으로 달린다.
+      - name: App 설치 토큰 발급
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.REVIEW_APP_ID }}
+          private-key: ${{ secrets.REVIEW_APP_PRIVATE_KEY }}
+
       - name: Resolve PR head
         id: pr
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           if [ "${{ github.event_name }}" = "issue_comment" ]; then
             sha=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}" --jq .head.sha)
@@ -64,13 +94,15 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ steps.pr.outputs.sha }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - uses: it-play/Code-Review-Bot@main
         with:
           gsml-api-key: ${{ secrets.GSML_API_KEY }}
+          github-token: ${{ steps.app-token.outputs.token }}
 ```
 
-### 3. 끝
+### 4. 끝
 
 PR을 열면 자동으로 리뷰가 달리고, 언제든 코멘트로 다시 부를 수 있다.
 
@@ -134,7 +166,7 @@ customInstructions: |
 | input | 기본값 | 설명 |
 | --- | --- | --- |
 | `gsml-api-key` | (필수) | GSML API 키 |
-| `github-token` | `${{ github.token }}` | 코멘트 작성용 토큰 |
+| `github-token` | `${{ github.token }}` | 코멘트 작성용 토큰. GitHub App 설치 토큰을 넣으면 App 이름으로 코멘트가 달린다 |
 | `model` | `darwin-35b-q4_k_m.gguf` | GSML이 서빙하는 모델 ID. `/v1/models` 로 확인한다 |
 | `base-url` | `http://ssh.gsmsv.site:26145/v1` | 다른 OpenAI 호환 서버를 쓸 때 교체한다 |
 | `fallback-models` | (없음) | 기본 모델이 막힐 때 시도할 대체 모델 (쉼표 구분) |
@@ -215,7 +247,7 @@ npm run review -- --repo it-play/Code-Review-Bot --pr 12 --ask "이 변경이 �
 ## gemini-code-assist에서 갈아타기
 
 1. 리포지토리 설정에서 gemini-code-assist GitHub App을 제거하거나, `.gemini/config.yaml` 에서 자동 리뷰를 끈다.
-2. 위 워크플로를 추가하고 `GSML_API_KEY` 시크릿을 등록한다.
+2. 위 워크플로를 추가하고 `GSML_API_KEY` 시크릿을 등록한다. (App을 쓴다면 `REVIEW_APP_ID`, `REVIEW_APP_PRIVATE_KEY` 도)
 3. 기존에 `.gemini/styleguide.md` 를 쓰고 있었다면 그 내용을 `.reviewbot/context.md` 로 옮긴다 — 매 리뷰에 그대로 실린다.
 
 트리거는 `/gemini review` → `/review`, `/gemini summary` → `/summary` 로 대응된다.
