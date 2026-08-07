@@ -3837,8 +3837,8 @@ var require_webidl = __commonJS({
           });
         }
         for (const options of converters) {
-          const { key, defaultValue, required: required2, converter } = options;
-          if (required2 === true) {
+          const { key, defaultValue, required: required3, converter } = options;
+          if (required3 === true) {
             if (!Object.hasOwn(dictionary, key)) {
               throw webidl.errors.exception({
                 header: prefix,
@@ -3851,7 +3851,7 @@ var require_webidl = __commonJS({
           if (hasDefault && value !== null) {
             value ??= defaultValue();
           }
-          if (required2 || hasDefault || value !== void 0) {
+          if (required3 || hasDefault || value !== void 0) {
             value = converter(value, prefix, `${argument}.${key}`);
             if (options.allowedValues && !options.allowedValues.includes(value)) {
               throw webidl.errors.exception({
@@ -4032,11 +4032,11 @@ var require_util2 = __commonJS({
     var { isUint8Array } = __require("node:util/types");
     var { webidl } = require_webidl();
     var supportedHashes = [];
-    var crypto2;
+    var crypto;
     try {
-      crypto2 = __require("node:crypto");
+      crypto = __require("node:crypto");
       const possibleRelevantHashes = ["sha256", "sha384", "sha512"];
-      supportedHashes = crypto2.getHashes().filter((hash2) => possibleRelevantHashes.includes(hash2));
+      supportedHashes = crypto.getHashes().filter((hash2) => possibleRelevantHashes.includes(hash2));
     } catch {
     }
     function responseURL(response) {
@@ -4309,7 +4309,7 @@ var require_util2 = __commonJS({
       }
     }
     function bytesMatch(bytes, metadataList) {
-      if (crypto2 === void 0) {
+      if (crypto === void 0) {
         return true;
       }
       const parsedMetadata = parseMetadata(metadataList);
@@ -4324,7 +4324,7 @@ var require_util2 = __commonJS({
       for (const item of metadata) {
         const algorithm = item.algo;
         const expectedValue = item.hash;
-        let actualValue = crypto2.createHash(algorithm).update(bytes).digest("base64");
+        let actualValue = crypto.createHash(algorithm).update(bytes).digest("base64");
         if (actualValue[actualValue.length - 1] === "=") {
           if (actualValue[actualValue.length - 2] === "=") {
             actualValue = actualValue.slice(0, -2);
@@ -5388,8 +5388,8 @@ var require_body = __commonJS({
     var { multipartFormDataParser } = require_formdata_parser();
     var random;
     try {
-      const crypto2 = __require("node:crypto");
-      random = (max) => crypto2.randomInt(0, max);
+      const crypto = __require("node:crypto");
+      random = (max) => crypto.randomInt(0, max);
     } catch {
       random = (max) => Math.floor(Math.random(max));
     }
@@ -10993,7 +10993,7 @@ var require_mock_interceptor = __commonJS({
 var require_mock_client = __commonJS({
   "node_modules/undici/lib/mock/mock-client.js"(exports, module) {
     "use strict";
-    var { promisify } = __require("node:util");
+    var { promisify: promisify2 } = __require("node:util");
     var Client = require_client();
     var { buildMockDispatch } = require_mock_utils();
     var {
@@ -11033,7 +11033,7 @@ var require_mock_client = __commonJS({
         return new MockInterceptor(opts, this[kDispatches]);
       }
       async [kClose]() {
-        await promisify(this[kOriginalClose])();
+        await promisify2(this[kOriginalClose])();
         this[kConnected] = 0;
         this[kMockAgent][Symbols.kClients].delete(this[kOrigin]);
       }
@@ -11046,7 +11046,7 @@ var require_mock_client = __commonJS({
 var require_mock_pool = __commonJS({
   "node_modules/undici/lib/mock/mock-pool.js"(exports, module) {
     "use strict";
-    var { promisify } = __require("node:util");
+    var { promisify: promisify2 } = __require("node:util");
     var Pool = require_pool();
     var { buildMockDispatch } = require_mock_utils();
     var {
@@ -11086,7 +11086,7 @@ var require_mock_pool = __commonJS({
         return new MockInterceptor(opts, this[kDispatches]);
       }
       async [kClose]() {
-        await promisify(this[kOriginalClose])();
+        await promisify2(this[kOriginalClose])();
         this[kConnected] = 0;
         this[kMockAgent][Symbols.kClients].delete(this[kOrigin]);
       }
@@ -16965,13 +16965,13 @@ var require_frame = __commonJS({
     "use strict";
     var { maxUnsigned16Bit } = require_constants5();
     var BUFFER_SIZE = 16386;
-    var crypto2;
+    var crypto;
     var buffer = null;
     var bufIdx = BUFFER_SIZE;
     try {
-      crypto2 = __require("node:crypto");
+      crypto = __require("node:crypto");
     } catch {
-      crypto2 = {
+      crypto = {
         // not full compatibility, but minimum.
         randomFillSync: function randomFillSync(buffer2, _offset, _size2) {
           for (let i = 0; i < buffer2.length; ++i) {
@@ -16984,7 +16984,7 @@ var require_frame = __commonJS({
     function generateMask() {
       if (bufIdx === BUFFER_SIZE) {
         bufIdx = 0;
-        crypto2.randomFillSync(buffer ??= Buffer.allocUnsafe(BUFFER_SIZE), 0, BUFFER_SIZE);
+        crypto.randomFillSync(buffer ??= Buffer.allocUnsafe(BUFFER_SIZE), 0, BUFFER_SIZE);
       }
       return [buffer[bufIdx++], buffer[bufIdx++], buffer[bufIdx++], buffer[bufIdx++]];
     }
@@ -17056,9 +17056,9 @@ var require_connection = __commonJS({
     var { Headers: Headers2, getHeadersList } = require_headers();
     var { getDecodeSplit } = require_util2();
     var { WebsocketFrameSend } = require_frame();
-    var crypto2;
+    var crypto;
     try {
-      crypto2 = __require("node:crypto");
+      crypto = __require("node:crypto");
     } catch {
     }
     function establishWebSocketConnection(url2, protocols, client, ws, onEstablish, options) {
@@ -17078,7 +17078,7 @@ var require_connection = __commonJS({
         const headersList = getHeadersList(new Headers2(options.headers));
         request2.headersList = headersList;
       }
-      const keyValue = crypto2.randomBytes(16).toString("base64");
+      const keyValue = crypto.randomBytes(16).toString("base64");
       request2.headersList.append("sec-websocket-key", keyValue);
       request2.headersList.append("sec-websocket-version", "13");
       for (const protocol of protocols) {
@@ -17108,7 +17108,7 @@ var require_connection = __commonJS({
             return;
           }
           const secWSAccept = response.headersList.get("Sec-WebSocket-Accept");
-          const digest = crypto2.createHash("sha1").update(keyValue + uid).digest("base64");
+          const digest = crypto.createHash("sha1").update(keyValue + uid).digest("base64");
           if (secWSAccept !== digest) {
             failWebsocketConnection(ws, "Incorrect hash received in Sec-WebSocket-Accept header.");
             return;
@@ -19124,8 +19124,8 @@ var require_directives = __commonJS({
               if (parts.length < 2)
                 return false;
             }
-            const [handle, prefix] = parts;
-            this.tags[handle] = prefix;
+            const [handle2, prefix] = parts;
+            this.tags[handle2] = prefix;
             return true;
           }
           case "%YAML": {
@@ -19172,10 +19172,10 @@ var require_directives = __commonJS({
             onError("Verbatim tags must end with a >");
           return verbatim;
         }
-        const [, handle, suffix] = source.match(/^(.*!)([^!]*)$/s);
+        const [, handle2, suffix] = source.match(/^(.*!)([^!]*)$/s);
         if (!suffix)
           onError(`The ${source} tag has no suffix`);
-        const prefix = this.tags[handle];
+        const prefix = this.tags[handle2];
         if (prefix) {
           try {
             return prefix + decodeURIComponent(suffix);
@@ -19184,7 +19184,7 @@ var require_directives = __commonJS({
             return null;
           }
         }
-        if (handle === "!")
+        if (handle2 === "!")
           return source;
         onError(`Could not resolve tag: ${source}`);
         return null;
@@ -19194,9 +19194,9 @@ var require_directives = __commonJS({
        * taking into account current tag prefixes and defaults.
        */
       tagString(tag) {
-        for (const [handle, prefix] of Object.entries(this.tags)) {
+        for (const [handle2, prefix] of Object.entries(this.tags)) {
           if (tag.startsWith(prefix))
-            return handle + escapeTagName(tag.substring(prefix.length));
+            return handle2 + escapeTagName(tag.substring(prefix.length));
         }
         return tag[0] === "!" ? tag : `!<${tag}>`;
       }
@@ -19213,11 +19213,11 @@ var require_directives = __commonJS({
           tagNames = Object.keys(tags);
         } else
           tagNames = [];
-        for (const [handle, prefix] of tagEntries) {
-          if (handle === "!!" && prefix === "tag:yaml.org,2002:")
+        for (const [handle2, prefix] of tagEntries) {
+          if (handle2 === "!!" && prefix === "tag:yaml.org,2002:")
             continue;
           if (!doc || tagNames.some((tn) => tn.startsWith(prefix)))
-            lines.push(`%TAG ${handle} ${prefix}`);
+            lines.push(`%TAG ${handle2} ${prefix}`);
         }
         return lines.join("\n");
       }
@@ -25720,14 +25720,14 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs3 = this.flowScalar(this.type);
+              const fs2 = this.flowScalar(this.type);
               if (atNextItem || it.value) {
-                map2.items.push({ start, key: fs3, sep: [] });
+                map2.items.push({ start, key: fs2, sep: [] });
                 this.onKeyLine = true;
               } else if (it.sep) {
-                this.stack.push(fs3);
+                this.stack.push(fs2);
               } else {
-                Object.assign(it, { key: fs3, sep: [] });
+                Object.assign(it, { key: fs2, sep: [] });
                 this.onKeyLine = true;
               }
               return;
@@ -25855,13 +25855,13 @@ var require_parser = __commonJS({
             case "scalar":
             case "single-quoted-scalar":
             case "double-quoted-scalar": {
-              const fs3 = this.flowScalar(this.type);
+              const fs2 = this.flowScalar(this.type);
               if (!it || it.value)
-                fc.items.push({ start: [], key: fs3, sep: [] });
+                fc.items.push({ start: [], key: fs2, sep: [] });
               else if (it.sep)
-                this.stack.push(fs3);
+                this.stack.push(fs2);
               else
-                Object.assign(it, { key: fs3, sep: [] });
+                Object.assign(it, { key: fs2, sep: [] });
               return;
             }
             case "flow-map-end":
@@ -26300,6 +26300,13 @@ var require_dist2 = __commonJS({
   }
 });
 
+// src/server/index.ts
+import { createServer } from "node:http";
+import { readFileSync as readFileSync5 } from "node:fs";
+
+// src/github/app.ts
+import { createSign } from "node:crypto";
+
 // node_modules/@actions/core/lib/command.js
 import * as os from "os";
 
@@ -26371,36 +26378,8 @@ function escapeProperty(s) {
   return toCommandValue(s).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A").replace(/:/g, "%3A").replace(/,/g, "%2C");
 }
 
-// node_modules/@actions/core/lib/file-command.js
-import * as crypto from "crypto";
-import * as fs from "fs";
-import * as os2 from "os";
-function issueFileCommand(command, message) {
-  const filePath = process.env[`GITHUB_${command}`];
-  if (!filePath) {
-    throw new Error(`Unable to find environment variable for file command ${command}`);
-  }
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`Missing file at path: ${filePath}`);
-  }
-  fs.appendFileSync(filePath, `${toCommandValue(message)}${os2.EOL}`, {
-    encoding: "utf8"
-  });
-}
-function prepareKeyValueMessage(key, value) {
-  const delimiter = `ghadelimiter_${crypto.randomUUID()}`;
-  const convertedValue = toCommandValue(value);
-  if (key.includes(delimiter)) {
-    throw new Error(`Unexpected input: name should not contain the delimiter "${delimiter}"`);
-  }
-  if (convertedValue.includes(delimiter)) {
-    throw new Error(`Unexpected input: value should not contain the delimiter "${delimiter}"`);
-  }
-  return `${key}<<${delimiter}${os2.EOL}${convertedValue}${os2.EOL}${delimiter}`;
-}
-
 // node_modules/@actions/core/lib/core.js
-import * as os4 from "os";
+import * as os3 from "os";
 
 // node_modules/@actions/http-client/lib/index.js
 var tunnel = __toESM(require_tunnel2(), 1);
@@ -26458,7 +26437,7 @@ var HttpResponseRetryCodes = [
 ];
 
 // node_modules/@actions/core/lib/summary.js
-import { EOL as EOL3 } from "os";
+import { EOL as EOL2 } from "os";
 import { constants, promises } from "fs";
 var __awaiter = function(thisArg, _arguments, P, generator) {
   function adopt(value) {
@@ -26602,7 +26581,7 @@ var Summary = class {
    * @returns {Summary} summary instance
    */
   addEOL() {
-    return this.addRaw(EOL3);
+    return this.addRaw(EOL2);
   }
   /**
    * Adds an HTML codeblock to the summary buffer
@@ -26742,20 +26721,20 @@ var Summary = class {
 var _summary = new Summary();
 
 // node_modules/@actions/core/lib/platform.js
-import os3 from "os";
+import os2 from "os";
 
 // node_modules/@actions/io/lib/io-util.js
-import * as fs2 from "fs";
-var { chmod, copyFile, lstat, mkdir, open, readdir, rename, rm, rmdir, stat, symlink, unlink } = fs2.promises;
+import * as fs from "fs";
+var { chmod, copyFile, lstat, mkdir, open, readdir, rename, rm, rmdir, stat, symlink, unlink } = fs.promises;
 var IS_WINDOWS = process.platform === "win32";
-var READONLY = fs2.constants.O_RDONLY;
+var READONLY = fs.constants.O_RDONLY;
 
 // node_modules/@actions/exec/lib/toolrunner.js
 var IS_WINDOWS2 = process.platform === "win32";
 
 // node_modules/@actions/core/lib/platform.js
-var platform = os3.platform();
-var arch = os3.arch();
+var platform = os2.platform();
+var arch = os2.arch();
 
 // node_modules/@actions/core/lib/core.js
 var ExitCode;
@@ -26765,28 +26744,6 @@ var ExitCode;
 })(ExitCode || (ExitCode = {}));
 function setSecret(secret) {
   issueCommand("add-mask", {}, secret);
-}
-function getInput(name, options) {
-  const val = process.env[`INPUT_${name.replace(/ /g, "_").toUpperCase()}`] || "";
-  if (options && options.required && !val) {
-    throw new Error(`Input required and not supplied: ${name}`);
-  }
-  if (options && options.trimWhitespace === false) {
-    return val;
-  }
-  return val.trim();
-}
-function setOutput(name, value) {
-  const filePath = process.env["GITHUB_OUTPUT"] || "";
-  if (filePath) {
-    return issueFileCommand("OUTPUT", prepareKeyValueMessage(name, value));
-  }
-  process.stdout.write(os4.EOL);
-  issueCommand("set-output", { name }, toCommandValue(value));
-}
-function setFailed(message) {
-  process.exitCode = ExitCode.Failure;
-  error(message);
 }
 function debug(message) {
   issueCommand("debug", {}, message);
@@ -26798,13 +26755,8 @@ function warning(message, properties = {}) {
   issueCommand("warning", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
 function info(message) {
-  process.stdout.write(message + os4.EOL);
+  process.stdout.write(message + os3.EOL);
 }
-
-// src/config.ts
-var import_yaml = __toESM(require_dist(), 1);
-import { readFileSync, existsSync as existsSync2 } from "node:fs";
-import { resolve } from "node:path";
 
 // src/logger.ts
 var inActions = Boolean(process.env["GITHUB_ACTIONS"]);
@@ -26831,7 +26783,69 @@ var log = {
   }
 };
 
+// src/github/app.ts
+var API = "https://api.github.com";
+var RENEW_MARGIN_MS = 5 * 6e4;
+var GitHubApp = class {
+  appId;
+  privateKey;
+  cache = /* @__PURE__ */ new Map();
+  constructor(credentials) {
+    if (!credentials.appId) throw new Error("GITHUB_APP_ID\uAC00 \uBE44\uC5B4 \uC788\uB2E4");
+    if (!credentials.privateKey) throw new Error("GITHUB_APP_PRIVATE_KEY\uAC00 \uBE44\uC5B4 \uC788\uB2E4");
+    this.appId = credentials.appId;
+    this.privateKey = normalizePrivateKey(credentials.privateKey);
+  }
+  /** 설치 ID에 대한 액세스 토큰. 유효한 캐시가 있으면 재사용한다. */
+  async installationToken(installationId) {
+    const cached2 = this.cache.get(installationId);
+    if (cached2 && cached2.expiresAt - RENEW_MARGIN_MS > Date.now()) return cached2.token;
+    const response = await fetch(`${API}/app/installations/${installationId}/access_tokens`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.jwt()}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "gsml-code-review-bot"
+      }
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`\uC124\uCE58 \uD1A0\uD070 \uBC1C\uAE09 \uC2E4\uD328 (HTTP ${response.status}): ${text.slice(0, 300)}`);
+    }
+    const data = JSON.parse(text);
+    if (!data.token) throw new Error("\uC124\uCE58 \uD1A0\uD070 \uC751\uB2F5\uC5D0 token\uC774 \uC5C6\uB2E4");
+    const expiresAt = data.expires_at ? Date.parse(data.expires_at) : Date.now() + 36e5;
+    this.cache.set(installationId, { token: data.token, expiresAt });
+    log.mask(data.token);
+    return data.token;
+  }
+  jwt() {
+    return createAppJwt(this.appId, this.privateKey);
+  }
+};
+function createAppJwt(appId, privateKey2) {
+  const now = Math.floor(Date.now() / 1e3);
+  const header = { alg: "RS256", typ: "JWT" };
+  const payload = { iat: now - 60, exp: now + 540, iss: appId };
+  const signingInput = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(payload))}`;
+  const signer = createSign("RSA-SHA256");
+  signer.update(signingInput);
+  const signature = signer.sign(normalizePrivateKey(privateKey2)).toString("base64url");
+  return `${signingInput}.${signature}`;
+}
+function normalizePrivateKey(raw) {
+  const trimmed = raw.trim();
+  return trimmed.includes("\\n") ? trimmed.replace(/\\n/g, "\n") : trimmed;
+}
+function base64url(value) {
+  return Buffer.from(value).toString("base64url");
+}
+
 // src/config.ts
+var import_yaml = __toESM(require_dist(), 1);
+import { readFileSync, existsSync } from "node:fs";
+import { resolve } from "node:path";
 var SEVERITIES = ["critical", "major", "minor", "nit"];
 var DEFAULT_CONFIG = {
   // GSML 게이트웨이는 모델 하나만 서빙한다. 모델 ID는 /v1/models 로 확인한다.
@@ -26951,7 +26965,7 @@ function loadConfig(workspace) {
   let fromFile = {};
   for (const candidate of CONFIG_FILES) {
     const path2 = resolve(workspace, candidate);
-    if (!existsSync2(path2)) continue;
+    if (!existsSync(path2)) continue;
     try {
       fromFile = pickFileConfig((0, import_yaml.parse)(readFileSync(path2, "utf8")));
       log.info(`\uC124\uC815 \uD30C\uC77C \uB85C\uB4DC: ${candidate}`);
@@ -31346,33 +31360,10 @@ var GitHubClient = class {
 };
 
 // src/github/event.ts
-import { readFileSync as readFileSync2 } from "node:fs";
-function readRepoRef() {
-  const slug = process.env["GITHUB_REPOSITORY"];
-  if (slug) {
-    const [owner, repo] = slug.split("/");
-    if (owner && repo) return { owner, repo };
-  }
-  const ref = repoRefFrom(readEventPayload());
-  if (ref) return ref;
-  throw new Error("GITHUB_REPOSITORY\uB97C \uD655\uC778\uD560 \uC218 \uC5C6\uB2E4");
-}
 function repoRefFrom(event) {
   const owner = event?.repository?.owner?.login;
   const repo = event?.repository?.name;
   return owner && repo ? { owner, repo } : void 0;
-}
-function readEventPayload() {
-  const path2 = process.env["GITHUB_EVENT_PATH"];
-  if (!path2) return void 0;
-  try {
-    return JSON.parse(readFileSync2(path2, "utf8"));
-  } catch {
-    return void 0;
-  }
-}
-function resolveTrigger() {
-  return parseTrigger(process.env["GITHUB_EVENT_NAME"] ?? "", readEventPayload());
 }
 function parseTrigger(eventName, event) {
   if (!event) return void 0;
@@ -33516,7 +33507,7 @@ ${body.join("\n")}`;
 
 // src/context/repoMap.ts
 import { execFileSync } from "node:child_process";
-import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
+import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
 import { join, dirname } from "node:path";
 
 // src/context/budget.ts
@@ -33615,9 +33606,9 @@ function renderTree(files, maxEntries = 60) {
 function renderManifests(workspace, files) {
   const parts = [];
   const packageJsonPath = join(workspace, "package.json");
-  if (existsSync3(packageJsonPath)) {
+  if (existsSync2(packageJsonPath)) {
     try {
-      const pkg = JSON.parse(readFileSync3(packageJsonPath, "utf8"));
+      const pkg = JSON.parse(readFileSync2(packageJsonPath, "utf8"));
       const deps = Object.keys(pkg["dependencies"] ?? {});
       const devDeps = Object.keys(pkg["devDependencies"] ?? {});
       const scripts = Object.keys(pkg["scripts"] ?? {});
@@ -33640,9 +33631,9 @@ function renderDocs(workspace, maxCharsPerDoc = 4e3) {
   const parts = [];
   for (const candidate of DOC_CANDIDATES) {
     const path2 = join(workspace, candidate);
-    if (!existsSync3(path2)) continue;
+    if (!existsSync2(path2)) continue;
     try {
-      const content = readFileSync3(path2, "utf8").trim();
+      const content = readFileSync2(path2, "utf8").trim();
       if (!content) continue;
       parts.push(`--- ${candidate} ---
 ${truncate(content, maxCharsPerDoc)}`);
@@ -33664,7 +33655,7 @@ function buildRepoMap(workspace) {
 
 // src/context/retriever.ts
 import { execFileSync as execFileSync2 } from "node:child_process";
-import { existsSync as existsSync4, readFileSync as readFileSync4, statSync } from "node:fs";
+import { existsSync as existsSync3, readFileSync as readFileSync3, statSync } from "node:fs";
 import { join as join2, posix, basename, extname } from "node:path";
 var CODE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
 var CONTEXT_EXTENSIONS = /* @__PURE__ */ new Set([
@@ -33716,10 +33707,10 @@ var IMPORT_PATTERNS = [
 var DECLARATION_PATTERN = /\b(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|interface|type|enum|const|let|var)\s+([A-Za-z_$][\w$]*)/g;
 function readFileSnapshot(workspace, path2, maxChars) {
   const absolute = join2(workspace, path2);
-  if (!existsSync4(absolute)) return void 0;
+  if (!existsSync3(absolute)) return void 0;
   try {
     if (statSync(absolute).size > 2 * 1024 * 1024) return void 0;
-    const raw = readFileSync4(absolute, "utf8");
+    const raw = readFileSync3(absolute, "utf8");
     if (raw.includes("\0")) return void 0;
     const content = truncateMiddle(raw, maxChars);
     return { path: path2, content, truncated: content.length !== raw.length };
@@ -33742,15 +33733,15 @@ function resolveRelativeImport(workspace, fromFile, specifier) {
   for (const candidate of candidates) {
     if (!candidate || candidate.startsWith("..")) continue;
     const absolute = join2(workspace, candidate);
-    if (existsSync4(absolute) && statSync(absolute).isFile()) return candidate;
+    if (existsSync3(absolute) && statSync(absolute).isFile()) return candidate;
   }
   return void 0;
 }
 function loadTsPathAliases(workspace) {
   const tsconfigPath = join2(workspace, "tsconfig.json");
-  if (!existsSync4(tsconfigPath)) return [];
+  if (!existsSync3(tsconfigPath)) return [];
   try {
-    const raw = readFileSync4(tsconfigPath, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1").replace(/,(\s*[}\]])/g, "$1");
+    const raw = readFileSync3(tsconfigPath, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1").replace(/,(\s*[}\]])/g, "$1");
     const parsed = JSON.parse(raw);
     const baseUrl = parsed.compilerOptions?.baseUrl ?? ".";
     const paths = parsed.compilerOptions?.paths ?? {};
@@ -33771,7 +33762,7 @@ function resolveAliasImport(workspace, specifier, aliases) {
       for (const suffix of RESOLVE_SUFFIXES) {
         const candidate = base + suffix;
         const absolute = join2(workspace, candidate);
-        if (existsSync4(absolute) && statSync(absolute).isFile()) return candidate;
+        if (existsSync3(absolute) && statSync(absolute).isFile()) return candidate;
       }
     }
   }
@@ -33870,7 +33861,7 @@ function escapeRegex(value) {
 }
 
 // src/context/memory.ts
-import { existsSync as existsSync5, readFileSync as readFileSync5 } from "node:fs";
+import { existsSync as existsSync4, readFileSync as readFileSync4 } from "node:fs";
 import { join as join3 } from "node:path";
 var BOT_MARKER = "<!-- glm-code-review-bot -->";
 function loadCodebaseMemory(workspace, config2) {
@@ -33880,9 +33871,9 @@ function loadCodebaseMemory(workspace, config2) {
   };
 }
 function readIfExists(path2, maxChars) {
-  if (!existsSync5(path2)) return "";
+  if (!existsSync4(path2)) return "";
   try {
-    return truncate(readFileSync5(path2, "utf8").trim(), maxChars);
+    return truncate(readFileSync4(path2, "utf8").trim(), maxChars);
   } catch {
     return "";
   }
@@ -34020,7 +34011,7 @@ __export(external_exports, {
   any: () => any,
   array: () => array,
   base64: () => base642,
-  base64url: () => base64url2,
+  base64url: () => base64url3,
   bigint: () => bigint2,
   boolean: () => boolean2,
   catch: () => _catch2,
@@ -35197,8 +35188,8 @@ function uint8ArrayToBase64(bytes) {
   }
   return btoa(binaryString);
 }
-function base64urlToUint8Array(base64url3) {
-  const base643 = base64url3.replace(/-/g, "+").replace(/_/g, "/");
+function base64urlToUint8Array(base64url4) {
+  const base643 = base64url4.replace(/-/g, "+").replace(/_/g, "/");
   const padding = "=".repeat((4 - base643.length % 4) % 4);
   return base64ToUint8Array(base643 + padding);
 }
@@ -35455,7 +35446,7 @@ var safeDecodeAsync = /* @__PURE__ */ _safeDecodeAsync($ZodRealError);
 var regexes_exports = {};
 __export(regexes_exports, {
   base64: () => base64,
-  base64url: () => base64url,
+  base64url: () => base64url2,
   bigint: () => bigint,
   boolean: () => boolean,
   browserEmail: () => browserEmail,
@@ -35550,7 +35541,7 @@ var mac = (delimiter) => {
 var cidrv4 = /^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/([0-9]|[1-2][0-9]|3[0-2])$/;
 var cidrv6 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|::|([0-9a-fA-F]{1,4})?::([0-9a-fA-F]{1,4}:?){0,6})\/(12[0-8]|1[01][0-9]|[1-9]?[0-9])$/;
 var base64 = /^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$/;
-var base64url = /^[A-Za-z0-9_-]*$/;
+var base64url2 = /^[A-Za-z0-9_-]*$/;
 var hostname = /^(?=.{1,253}\.?$)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[-0-9a-zA-Z]{0,61}[0-9a-zA-Z])?)*\.?$/;
 var domain = /^([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
 var httpProtocol = /^https?$/;
@@ -36564,14 +36555,14 @@ var $ZodBase64 = /* @__PURE__ */ $constructor("$ZodBase64", (inst, def) => {
   };
 });
 function isValidBase64URL(data) {
-  if (!base64url.test(data))
+  if (!base64url2.test(data))
     return false;
   const base643 = data.replace(/[-_]/g, (c) => c === "-" ? "+" : "/");
   const padded = base643.padEnd(Math.ceil(base643.length / 4) * 4, "=");
   return isValidBase64(padded);
 }
 var $ZodBase64URL = /* @__PURE__ */ $constructor("$ZodBase64URL", (inst, def) => {
-  def.pattern ?? (def.pattern = base64url);
+  def.pattern ?? (def.pattern = base64url2);
   $ZodStringFormat.init(inst, def);
   inst._zod.bag.contentEncoding = "base64url";
   inst._zod.check = (payload) => {
@@ -46397,7 +46388,7 @@ __export(schemas_exports2, {
   any: () => any,
   array: () => array,
   base64: () => base642,
-  base64url: () => base64url2,
+  base64url: () => base64url3,
   bigint: () => bigint2,
   boolean: () => boolean2,
   catch: () => _catch2,
@@ -47019,7 +47010,7 @@ var ZodBase64URL = /* @__PURE__ */ $constructor("ZodBase64URL", (inst, def) => {
   $ZodBase64URL.init(inst, def);
   ZodStringFormat.init(inst, def);
 });
-function base64url2(params) {
+function base64url3(params) {
   return _base64url(ZodBase64URL, params);
 }
 var ZodE164 = /* @__PURE__ */ $constructor("ZodE164", (inst, def) => {
@@ -49151,25 +49142,74 @@ function dedupeKey(path2, line, title) {
   return `${path2}:${line}:${normalized}`;
 }
 
-// src/index.ts
-function applyActionInputs() {
-  const mapping = [
-    ["gsml-api-key", "GSML_API_KEY"],
-    ["github-token", "GITHUB_TOKEN"],
-    ["model", "REVIEWBOT_MODEL"],
-    ["fallback-models", "REVIEWBOT_FALLBACK_MODELS"],
-    ["base-url", "REVIEWBOT_BASE_URL"],
-    ["language", "REVIEWBOT_LANGUAGE"],
-    ["trigger-prefix", "REVIEWBOT_TRIGGER_PREFIX"],
-    ["min-severity", "REVIEWBOT_MIN_SEVERITY"],
-    ["auto-review", "REVIEWBOT_AUTO_REVIEW"],
-    ["max-files", "REVIEWBOT_MAX_FILES"],
-    ["instructions", "REVIEWBOT_INSTRUCTIONS"]
-  ];
-  for (const [input, env] of mapping) {
-    const value = getInput(input);
-    if (value) process.env[env] = value;
+// src/server/workspace.ts
+import { execFile } from "node:child_process";
+import { mkdtemp, rm as rm2 } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join as join4 } from "node:path";
+import { promisify } from "node:util";
+var run = promisify(execFile);
+function authEnv(token) {
+  const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
+  return {
+    ...process.env,
+    GIT_TERMINAL_PROMPT: "0",
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
+    GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${basic}`
+  };
+}
+async function checkoutCommit(owner, repo, sha, token) {
+  const path2 = await mkdtemp(join4(tmpdir(), "reviewbot-"));
+  const env = authEnv(token);
+  const dispose = async () => {
+    await rm2(path2, { recursive: true, force: true }).catch((error52) => {
+      log.warn(`\uC784\uC2DC \uCCB4\uD06C\uC544\uC6C3 \uC815\uB9AC \uC2E4\uD328(${path2}): ${String(error52)}`);
+    });
+  };
+  try {
+    await run("git", ["init", "--quiet"], { cwd: path2, env });
+    await run("git", ["remote", "add", "origin", `https://github.com/${owner}/${repo}.git`], { cwd: path2, env });
+    await run("git", ["fetch", "--depth", "1", "--quiet", "origin", sha], { cwd: path2, env, maxBuffer: 32 * 1024 * 1024 });
+    await run("git", ["checkout", "--quiet", "FETCH_HEAD"], { cwd: path2, env });
+    log.debug(`\uCCB4\uD06C\uC544\uC6C3 \uC644\uB8CC: ${owner}/${repo}@${sha.slice(0, 8)} \u2192 ${path2}`);
+    return { path: path2, dispose };
+  } catch (error52) {
+    await dispose();
+    throw new Error(`\uB9AC\uD3EC\uC9C0\uD1A0\uB9AC \uCCB4\uD06C\uC544\uC6C3 \uC2E4\uD328(${owner}/${repo}@${sha.slice(0, 8)}): ${error52.message}`);
   }
+}
+
+// src/server/handler.ts
+var PR_ACTIONS = ["opened", "reopened", "synchronize", "ready_for_review"];
+function accept(deps, eventName, payload) {
+  const trigger = parseTrigger(eventName, payload);
+  if (!trigger) return void 0;
+  const repo = repoRefFrom(payload);
+  if (!repo) return void 0;
+  const installationId = payload.installation?.id;
+  if (!installationId) {
+    log.warn(`${repo.owner}/${repo.repo}: \uC6F9\uD6C5\uC5D0 installation\uC774 \uC5C6\uB2E4 \u2014 App \uC124\uCE58 \uC774\uBCA4\uD2B8\uAC00 \uB9DE\uB294\uC9C0 \uD655\uC778\uD574\uC57C \uD55C\uB2E4`);
+    return void 0;
+  }
+  const slug = `${repo.owner}/${repo.repo}`;
+  if (deps.allowedRepos.length > 0 && !deps.allowedRepos.includes(slug)) {
+    log.warn(`${slug}: \uD5C8\uC6A9 \uBAA9\uB85D\uC5D0 \uC5C6\uC5B4 \uBB34\uC2DC\uD55C\uB2E4`);
+    return void 0;
+  }
+  if (trigger.kind !== "pull_request" && isBotActor(trigger.author)) {
+    log.debug(`${slug}: \uBD07(${trigger.author})\uC758 \uCF54\uBA58\uD2B8\uB77C \uBB34\uC2DC\uD55C\uB2E4`);
+    return void 0;
+  }
+  if (trigger.kind === "issue_comment" || trigger.kind === "review_comment") {
+    if (!trigger.body.trimStart().startsWith("/")) return void 0;
+  } else if (trigger.kind === "pull_request") {
+    if (trigger.draft || !PR_ACTIONS.includes(trigger.action)) return void 0;
+  }
+  return {
+    key: `${slug}#${trigger.pr}`,
+    run: () => execute(deps, repo.owner, repo.repo, installationId, trigger)
+  };
 }
 function resolveCommand(trigger, triggerPrefix, autoReview) {
   switch (trigger.kind) {
@@ -49180,86 +49220,218 @@ function resolveCommand(trigger, triggerPrefix, autoReview) {
       return parseCommand(trigger.body, triggerPrefix) ?? { name: "review", focus: "", full: false };
     case "pull_request":
       if (!autoReview) return void 0;
-      if (trigger.draft) return void 0;
-      if (!["opened", "reopened", "synchronize", "ready_for_review"].includes(trigger.action)) return void 0;
       return { name: "review", focus: "", full: false };
   }
 }
-async function main() {
-  applyActionInputs();
-  const workspace = process.env["GITHUB_WORKSPACE"] ?? process.cwd();
-  const config2 = loadConfig(workspace);
-  const trigger = resolveTrigger();
-  if (!trigger) {
-    log.info("\uCC98\uB9AC\uD560 \uD2B8\uB9AC\uAC70\uAC00 \uC5C6\uB2E4 \u2014 \uC885\uB8CC");
-    return;
-  }
-  if (trigger.kind !== "pull_request" && isBotActor(trigger.author)) {
-    log.info(`\uBD07(${trigger.author})\uC758 \uCF54\uBA58\uD2B8\uB77C \uBB34\uC2DC\uD55C\uB2E4`);
-    return;
-  }
-  const command = resolveCommand(trigger, config2.triggerPrefix, config2.autoReview);
-  if (!command) {
-    log.info("\uC2E4\uD589\uD560 \uBA85\uB839\uC774 \uC5C6\uB2E4 \u2014 \uC885\uB8CC");
-    return;
-  }
-  const token = process.env["GITHUB_TOKEN"];
-  if (!token) throw new Error("GITHUB_TOKEN\uC774 \uC5C6\uB2E4 \u2014 \uC6CC\uD06C\uD50C\uB85C\uC5D0\uC11C \uC804\uB2EC\uD574\uC57C \uD55C\uB2E4");
-  const apiKey = process.env["GSML_API_KEY"];
-  if (!apiKey) throw new Error("GSML_API_KEY\uAC00 \uC5C6\uB2E4 \u2014 \uB9AC\uD3EC\uC9C0\uD1A0\uB9AC \uC2DC\uD06C\uB9BF\uC5D0 \uB4F1\uB85D\uD574\uC57C \uD55C\uB2E4");
-  log.mask(apiKey);
-  const github = new GitHubClient(token, readRepoRef());
-  if (trigger.kind === "issue_comment" || trigger.kind === "review_comment") {
+async function execute(deps, owner, repo, installationId, trigger) {
+  const slug = `${owner}/${repo}`;
+  const token = await deps.app.installationToken(installationId);
+  const github = new GitHubClient(token, { owner, repo });
+  const byComment = trigger.kind === "issue_comment" || trigger.kind === "review_comment";
+  if (byComment) {
     const trusted = isTrustedAssociation(trigger.association) || await github.hasWriteAccess(trigger.author);
     if (!trusted) {
-      log.warn(`${trigger.author}(${trigger.association})\uC5D0\uAC8C \uC4F0\uAE30 \uAD8C\uD55C\uC774 \uC5C6\uC5B4 \uBA85\uB839\uC744 \uBB34\uC2DC\uD55C\uB2E4`);
+      log.warn(`${slug}: ${trigger.author}(${trigger.association})\uC5D0\uAC8C \uC4F0\uAE30 \uAD8C\uD55C\uC774 \uC5C6\uC5B4 \uBA85\uB839\uC744 \uBB34\uC2DC\uD55C\uB2E4`);
       await github.addReaction(trigger.commentId, "confused");
       return;
     }
-    await github.addReaction(trigger.commentId, "eyes");
-  }
-  const llm = new LlmClient({
-    apiKey,
-    baseUrl: config2.baseUrl,
-    model: config2.model,
-    fallbackModels: config2.fallbackModels
-  });
-  const deps = { github, llm, config: config2, workspace };
-  if (command.name === "help") {
-    await github.createIssueComment(trigger.pr, helpText(config2.triggerPrefix, config2.model));
-    return;
   }
   const pr = await github.getPullRequest(trigger.pr);
-  log.info(`\uB300\uC0C1 PR #${pr.number} "${pr.title}" \u2014 \uBA85\uB839: ${command.name}`);
+  const checkout = await checkoutCommit(owner, repo, pr.headSha, token);
   try {
-    switch (command.name) {
-      case "review": {
-        const outcome = await runReview(deps, pr, { focus: command.focus, full: command.full });
-        setOutput("findings", String(outcome.findings));
-        setOutput("verdict", outcome.verdict);
-        log.info(`\uB9AC\uBDF0 \uC644\uB8CC \u2014 \uC9C0\uC801 ${outcome.findings}\uAC74(\uC778\uB77C\uC778 ${outcome.inline}\uAC74), \uD310\uC815 ${outcome.verdict}`);
-        break;
-      }
-      case "ask":
-        await runAsk(deps, pr, command.question);
-        break;
-      case "summary":
-        await runSummary(deps, pr);
-        break;
-      case "learn":
-        await runLearn(deps, pr);
-        break;
+    const config2 = loadConfig(checkout.path);
+    const command = resolveCommand(trigger, config2.triggerPrefix, config2.autoReview);
+    if (!command) {
+      log.debug(`${slug}#${trigger.pr}: \uC2E4\uD589\uD560 \uBA85\uB839\uC774 \uC5C6\uB2E4`);
+      return;
     }
-    setOutput("prompt_tokens", String(llm.totalUsage.prompt_tokens));
-    setOutput("completion_tokens", String(llm.totalUsage.completion_tokens));
-  } catch (error52) {
-    const message = error52 instanceof Error ? error52.message : String(error52);
-    log.error(message);
-    await github.createIssueComment(trigger.pr, renderError(message, github.runUrl())).catch((commentError) => log.warn(`\uC2E4\uD328 \uCF54\uBA58\uD2B8 \uB4F1\uB85D \uC2E4\uD328: ${String(commentError)}`));
-    throw error52;
+    if (byComment) await github.addReaction(trigger.commentId, "eyes");
+    if (command.name === "help") {
+      await github.createIssueComment(trigger.pr, helpText(config2.triggerPrefix, config2.model));
+      return;
+    }
+    log.info(`${slug}#${pr.number} "${pr.title}" \u2014 \uBA85\uB839: ${command.name}`);
+    const llm = new LlmClient({
+      apiKey: deps.gsmlApiKey,
+      baseUrl: config2.baseUrl,
+      model: config2.model,
+      fallbackModels: config2.fallbackModels
+    });
+    const runnerDeps = { github, llm, config: config2, workspace: checkout.path };
+    try {
+      switch (command.name) {
+        case "review": {
+          const outcome = await runReview(runnerDeps, pr, { focus: command.focus, full: command.full });
+          log.info(`${slug}#${pr.number} \uB9AC\uBDF0 \uC644\uB8CC \u2014 \uC9C0\uC801 ${outcome.findings}\uAC74, \uD310\uC815 ${outcome.verdict}`);
+          break;
+        }
+        case "ask":
+          await runAsk(runnerDeps, pr, command.question);
+          break;
+        case "summary":
+          await runSummary(runnerDeps, pr);
+          break;
+        case "learn":
+          await runLearn(runnerDeps, pr);
+          break;
+      }
+    } catch (error52) {
+      const message = error52 instanceof Error ? error52.message : String(error52);
+      log.error(`${slug}#${pr.number} \uC2E4\uD328: ${message}`);
+      await github.createIssueComment(trigger.pr, renderError(message, void 0)).catch((commentError) => log.warn(`\uC2E4\uD328 \uCF54\uBA58\uD2B8 \uB4F1\uB85D \uC2E4\uD328: ${String(commentError)}`));
+      throw error52;
+    }
+  } finally {
+    await checkout.dispose();
   }
 }
-main().catch((error52) => {
-  const message = error52 instanceof Error ? error52.stack ?? error52.message : String(error52);
-  setFailed(message);
-});
+
+// src/server/queue.ts
+var ReviewQueue = class {
+  pending = [];
+  running = false;
+  /** 지금 처리 중인 작업의 키 — 중복 판정에는 쓰지 않고 로그·상태 확인용이다 */
+  activeKey;
+  get size() {
+    return this.pending.length + (this.running ? 1 : 0);
+  }
+  get active() {
+    return this.activeKey;
+  }
+  enqueue(key, job) {
+    const replacedAt = this.pending.findIndex((entry) => entry.key === key);
+    if (replacedAt !== -1) {
+      this.pending[replacedAt] = { key, job };
+      log.info(`\uD050: ${key} \uB300\uAE30 \uC791\uC5C5\uC744 \uC0C8 \uC694\uCCAD\uC73C\uB85C \uAD50\uCCB4\uD588\uB2E4 (\uB300\uAE30 ${this.pending.length}\uAC74)`);
+    } else {
+      this.pending.push({ key, job });
+      log.info(`\uD050: ${key} \uCD94\uAC00 (\uB300\uAE30 ${this.pending.length}\uAC74)`);
+    }
+    void this.drain();
+  }
+  async drain() {
+    if (this.running) return;
+    this.running = true;
+    while (this.pending.length > 0) {
+      const entry = this.pending.shift();
+      if (!entry) break;
+      this.activeKey = entry.key;
+      const started = Date.now();
+      try {
+        await entry.job();
+        log.info(`\uD050: ${entry.key} \uC644\uB8CC (${Math.round((Date.now() - started) / 1e3)}\uCD08)`);
+      } catch (error52) {
+        log.error(`\uD050: ${entry.key} \uC2E4\uD328 \u2014 ${error52 instanceof Error ? error52.message : String(error52)}`);
+      } finally {
+        this.activeKey = void 0;
+      }
+    }
+    this.running = false;
+  }
+};
+
+// src/server/webhook.ts
+import { createHmac, timingSafeEqual } from "node:crypto";
+function verifySignature(secret, body, header) {
+  if (!header) return false;
+  const expected = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
+  const received = Buffer.from(header);
+  const expectedBuffer = Buffer.from(expected);
+  if (received.length !== expectedBuffer.length) return false;
+  return timingSafeEqual(received, expectedBuffer);
+}
+async function readBody(stream, limitBytes = 25 * 1024 * 1024) {
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of stream) {
+    const buffer = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+    total += buffer.length;
+    if (total > limitBytes) throw new Error("\uC6F9\uD6C5 \uBCF8\uBB38\uC774 \uB108\uBB34 \uD06C\uB2E4");
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks);
+}
+
+// src/server/index.ts
+function required2(name) {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} \uD658\uACBD\uBCC0\uC218\uAC00 \uD544\uC694\uD558\uB2E4`);
+  return value;
+}
+function privateKey() {
+  const path2 = process.env["GITHUB_APP_PRIVATE_KEY_PATH"];
+  if (path2) return readFileSync5(path2, "utf8");
+  return required2("GITHUB_APP_PRIVATE_KEY");
+}
+function allowedRepos() {
+  return (process.env["REVIEWBOT_ALLOWED_REPOS"] ?? "").split(",").map((slug) => slug.trim()).filter(Boolean);
+}
+function main() {
+  const webhookSecret = required2("GITHUB_WEBHOOK_SECRET");
+  const gsmlApiKey = required2("GSML_API_KEY");
+  log.mask(gsmlApiKey);
+  const deps = {
+    app: new GitHubApp({ appId: required2("GITHUB_APP_ID"), privateKey: privateKey() }),
+    gsmlApiKey,
+    allowedRepos: allowedRepos()
+  };
+  const queue = new ReviewQueue();
+  const port = Number(process.env["PORT"] ?? 3e3);
+  const server = createServer((request2, response) => {
+    handle(request2, response, deps, queue, webhookSecret).catch((error52) => {
+      log.error(`\uC694\uCCAD \uCC98\uB9AC \uC2E4\uD328: ${error52 instanceof Error ? error52.message : String(error52)}`);
+      send(response, 500, "internal error");
+    });
+  });
+  server.listen(port, () => {
+    const scope = deps.allowedRepos.length ? deps.allowedRepos.join(", ") : "(\uC124\uCE58\uB41C \uBAA8\uB4E0 \uB9AC\uD3EC\uC9C0\uD1A0\uB9AC)";
+    log.info(`\uC6F9\uD6C5 \uC11C\uBC84 \uC2DC\uC791 \u2014 \uD3EC\uD2B8 ${port} / \uD5C8\uC6A9 \uB300\uC0C1: ${scope}`);
+  });
+  for (const signal of ["SIGTERM", "SIGINT"]) {
+    process.on(signal, () => {
+      log.info(`${signal} \uC218\uC2E0 \u2014 \uC0C8 \uC694\uCCAD\uC744 \uBC1B\uC9C0 \uC54A\uB294\uB2E4 (\uC9C4\uD589 \uC911 \uB9AC\uBDF0 ${queue.size}\uAC74)`);
+      server.close(() => process.exit(0));
+    });
+  }
+}
+async function handle(request2, response, deps, queue, webhookSecret) {
+  const url2 = request2.url ?? "/";
+  if (request2.method === "GET" && (url2 === "/health" || url2 === "/")) {
+    send(response, 200, JSON.stringify({ ok: true, queued: queue.size, active: queue.active ?? null }));
+    return;
+  }
+  if (request2.method !== "POST" || !url2.startsWith("/webhook")) {
+    send(response, 404, "not found");
+    return;
+  }
+  const body = await readBody(request2);
+  if (!verifySignature(webhookSecret, body, request2.headers["x-hub-signature-256"])) {
+    log.warn("\uC11C\uBA85\uC774 \uB9DE\uC9C0 \uC54A\uB294 \uC6F9\uD6C5 \uC694\uCCAD\uC744 \uAC70\uC808\uD588\uB2E4");
+    send(response, 401, "bad signature");
+    return;
+  }
+  const eventName = request2.headers["x-github-event"] ?? "";
+  if (eventName === "ping") {
+    send(response, 200, "pong");
+    return;
+  }
+  let payload;
+  try {
+    payload = JSON.parse(body.toString("utf8"));
+  } catch {
+    send(response, 400, "invalid json");
+    return;
+  }
+  const accepted = accept(deps, eventName, payload);
+  if (!accepted) {
+    send(response, 200, "ignored");
+    return;
+  }
+  queue.enqueue(accepted.key, accepted.run);
+  send(response, 202, "queued");
+}
+function send(response, status, body) {
+  response.writeHead(status, { "Content-Type": "text/plain; charset=utf-8" });
+  response.end(body);
+}
+main();

@@ -1,112 +1,88 @@
 # GSML Code Review Bot
 
-GSML 게이트웨이의 모델로 GitHub Pull Request를 리뷰하고, 결과를 **인라인 리뷰 코멘트**로 남기는 GitHub Action이다. `gemini-code-assist` 대체용으로 만들었다.
+GSML 게이트웨이의 모델로 GitHub Pull Request를 리뷰하고, 결과를 **인라인 리뷰 코멘트**로 남기는 GitHub App이다. `gemini-code-assist` 대체용으로 만들었다.
 
 - **코드가 상용 LLM 제공자로 나가지 않는다.** GSML은 학교에서 직접 서빙하는 모델이고, OpenAI 호환 엔드포인트를 fetch로 직접 호출한다. OpenAI SDK나 중계 게이트웨이를 거치지 않는다.
 - **모델 비용 0원.** 하루 13,107,200 토큰까지 쓸 수 있다 (컨텍스트 131K).
 - **코드베이스 맥락을 안다.** diff만 던지지 않고, 변경 파일의 전체 내용 + import 그래프 + 호출부 + 리포지토리 메모리를 함께 넣는다.
 - **코멘트로 트리거한다.** PR에 `/review` 한 줄이면 된다.
-- TypeScript로 작성했고 외부 런타임 의존이 없다 (번들 하나로 실행).
+- **GitHub Actions를 쓰지 않는다.** 웹훅을 직접 받는 서버로 돌아가서, Actions 실행 기록도 Actions 분 소모도 없다.
+- TypeScript로 작성했고 런타임 의존이 없다 (번들 하나 + git).
 
 ---
 
 ## 빠른 시작
 
+리뷰 서버를 한 번 띄워두면, 그 뒤로는 App을 설치한 리포지토리마다 설정할 게 없다.
+
 ### 1. GSML API 키 발급
 
-[GSML 콘솔](https://gsmsv.site)에서 키를 발급받아, 리뷰를 붙일 리포지토리의
-**Settings → Secrets and variables → Actions** 에 `GSML_API_KEY` 로 등록한다.
+[GSML 콘솔](https://gsmsv.site)에서 키를 발급받는다. 서버 환경변수 `GSML_API_KEY` 로 넣는다.
+키에는 만료일이 있고, 만료되면 리뷰가 401로 실패하므로 콘솔에서 연장하거나 재발급한다.
 
-키에는 만료일이 있다. 만료되면 리뷰가 401로 실패하므로 콘솔에서 연장하거나 재발급한다.
+리뷰는 **서버에 넣은 키 하나**로 전부 처리된다. App을 여러 리포지토리에 설치해도
+할당량은 그 키 하나에서 나가므로, 의도치 않은 소모를 막으려면 아래 `REVIEWBOT_ALLOWED_REPOS` 를 채운다.
 
-### 2. GitHub App 연결 (선택)
+### 2. GitHub App 만들기
 
-기본값으로도 동작하지만, 그때 리뷰 코멘트는 `github-actions[bot]` 이름으로 달린다.
-봇에 고유한 이름과 아바타를 주려면 GitHub App을 만들어 신원으로 쓴다.
+**Settings → Developer settings → GitHub Apps → New GitHub App**
 
-이 App은 **웹훅을 받지 않는다.** 트리거는 워크플로의 `on:` 이벤트가 담당하고,
-App은 API를 부를 때의 신원으로만 쓰인다. 그래서 Webhook URL은 비워도 된다.
+| 항목 | 값 |
+| --- | --- |
+| Webhook | **Active 체크** |
+| Webhook URL | `https://<서버 주소>/webhook` |
+| Webhook secret | 임의의 긴 문자열 (서버의 `GITHUB_WEBHOOK_SECRET` 과 같아야 한다) |
+| Repository permissions → Pull requests | `Read & write` |
+| Repository permissions → Issues | `Read & write` |
+| Repository permissions → Contents | `Read-only` (`memoryAutoCommit: true` 면 `Read & write`) |
+| Subscribe to events | **Pull request**, **Issue comment**, **Pull request review comment** |
 
-1. **Settings → Developer settings → GitHub Apps → New GitHub App** 에서 App을 만든다.
-   - Repository permissions: **Pull requests** `Read & write`, **Issues** `Read & write`, **Contents** `Read-only`
-     (`memoryAutoCommit: true` 를 쓸 거라면 Contents도 `Read & write`)
-   - Webhook: **Active 체크 해제**
-2. App 설정에서 **Private key** 를 발급해 `.pem` 파일을 받는다.
-3. App을 리뷰 대상 리포지토리에 **Install** 한다.
-4. 리포지토리 시크릿에 두 개를 등록한다.
-   - `REVIEW_APP_ID` — App 설정 상단의 App ID (숫자)
-   - `REVIEW_APP_PRIVATE_KEY` — `.pem` 파일 **내용 전체** (`-----BEGIN...` 줄 포함)
+만든 뒤 **Private key** 를 발급해 `.pem` 파일을 받고, App을 리뷰할 리포지토리에 **Install** 한다.
 
-`isBotActor` 가 `[bot]` 으로 끝나는 작성자를 걸러내므로, App이 남긴 코멘트에 봇이
-스스로 다시 반응하는 루프는 생기지 않는다.
+### 3. 서버 띄우기
 
-### 3. 워크플로 추가
+```bash
+git clone https://github.com/it-play/Code-Review-Bot.git
+cd Code-Review-Bot
 
-리뷰 대상 리포지토리에 `.github/workflows/code-review.yml` 을 만든다.
+mkdir -p secrets
+cp ~/Downloads/your-app.private-key.pem secrets/app-private-key.pem
 
-```yaml
-name: Code Review
+cat > .env <<'EOF'
+GSML_API_KEY=...
+GITHUB_APP_ID=123456
+GITHUB_WEBHOOK_SECRET=...
+REVIEWBOT_ALLOWED_REPOS=it-play/Code-Review-Bot
+EOF
 
-on:
-  pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
-  issue_comment:
-    types: [created]
-
-concurrency:
-  group: code-review-${{ github.event.issue.number || github.event.pull_request.number }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
-  pull-requests: write
-  issues: write
-
-jobs:
-  review:
-    if: >-
-      github.event_name == 'pull_request' ||
-      (github.event.issue.pull_request != null && startsWith(github.event.comment.body, '/'))
-    runs-on: ubuntu-latest
-    # 스텝의 if: 에서는 secrets 를 읽을 수 없어 env로 옮긴다
-    env:
-      HAS_APP: ${{ secrets.REVIEW_APP_ID }}
-    steps:
-      # App 시크릿을 등록하지 않았으면 이 스텝을 건너뛰고 github.token 으로 동작한다.
-      # 그때 코멘트는 github-actions[bot] 이름으로 달린다.
-      - name: App 설치 토큰 발급
-        id: app-token
-        if: env.HAS_APP != ''
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ secrets.REVIEW_APP_ID }}
-          private-key: ${{ secrets.REVIEW_APP_PRIVATE_KEY }}
-
-      - name: Resolve PR head
-        id: pr
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
-        run: |
-          if [ "${{ github.event_name }}" = "issue_comment" ]; then
-            sha=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}" --jq .head.sha)
-          else
-            sha="${{ github.event.pull_request.head.sha }}"
-          fi
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-      # 코드베이스 맥락을 읽으려면 체크아웃이 필요하다
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ steps.pr.outputs.sha }}
-          token: ${{ steps.app-token.outputs.token || github.token }}
-
-      - uses: it-play/Code-Review-Bot@main
-        with:
-          gsml-api-key: ${{ secrets.GSML_API_KEY }}
-          github-token: ${{ steps.app-token.outputs.token || github.token }}
+docker compose up -d --build
+curl http://localhost:3000/health   # {"ok":true,"queued":0,"active":null}
 ```
 
-### 4. 끝
+| 환경변수 | 필수 | 설명 |
+| --- | --- | --- |
+| `GSML_API_KEY` | ✅ | 모델 호출에 쓸 키. 모든 리뷰가 이 키를 쓴다 |
+| `GITHUB_APP_ID` | ✅ | App 설정 상단의 숫자 |
+| `GITHUB_WEBHOOK_SECRET` | ✅ | App에 설정한 웹훅 시크릿과 같아야 한다 |
+| `GITHUB_APP_PRIVATE_KEY_PATH` | ✅* | `.pem` 파일 경로 (compose가 마운트한다) |
+| `GITHUB_APP_PRIVATE_KEY` | ✅* | 경로 대신 PEM 내용을 직접 줄 때 |
+| `REVIEWBOT_ALLOWED_REPOS` | | `owner/repo` 쉼표 구분. 비우면 설치된 모든 리포지토리를 리뷰한다 |
+| `REVIEWBOT_BASE_URL` | | 모델 서버 주소. 같은 호스트면 `http://localhost:26145/v1` 로 두는 게 좋다 |
+| `PORT` | | 기본 3000 |
+
+\* 둘 중 하나는 있어야 한다.
+
+### 4. 서버를 GitHub이 부를 수 있게 열기
+
+GitHub이 웹훅을 보내려면 서버가 **공개 주소**로 열려 있어야 한다. HTTPS를 권한다 —
+평문 HTTP로 두면 PR 제목·diff 메타데이터가 그대로 오간다.
+
+- 도메인이 있다면 nginx/Caddy로 리버스 프록시 + Let's Encrypt
+- 포트를 못 여는 환경이면 `cloudflared tunnel` 이 제일 간단하다 (HTTPS 주소를 공짜로 준다)
+
+열고 나서 App 설정의 **Advanced → Recent Deliveries** 에서 ping이 200으로 갔는지 확인한다.
+
+### 5. 끝
 
 PR을 열면 자동으로 리뷰가 달리고, 언제든 코멘트로 다시 부를 수 있다.
 
@@ -165,22 +141,22 @@ customInstructions: |
   - 외부 API 호출에는 타임아웃과 재시도가 있어야 한다.
 ```
 
-워크플로 `with:` 로 준 값이 설정 파일보다 우선한다.
+설정은 **리포지토리마다** 다르게 줄 수 있다 — 서버가 매 리뷰에서 체크아웃한 리포지토리의
+`.reviewbot/config.yml` 을 읽기 때문이다.
 
-| input | 기본값 | 설명 |
-| --- | --- | --- |
-| `gsml-api-key` | (필수) | GSML API 키 |
-| `github-token` | `${{ github.token }}` | 코멘트 작성용 토큰. GitHub App 설치 토큰을 넣으면 App 이름으로 코멘트가 달린다 |
-| `model` | `darwin-35b-q4_k_m.gguf` | GSML이 서빙하는 모델 ID. `/v1/models` 로 확인한다 |
-| `base-url` | `http://ssh.gsmsv.site:26145/v1` | 다른 OpenAI 호환 서버를 쓸 때 교체한다 |
-| `fallback-models` | (없음) | 기본 모델이 막힐 때 시도할 대체 모델 (쉼표 구분) |
-| `language` | `ko` | `en`, `ja`, `zh` |
-| `min-severity` | `minor` | `critical` / `major` / `minor` / `nit` |
-| `auto-review` | `true` | PR 이벤트 시 자동 리뷰 |
-| `max-files` | `40` | 한 번에 리뷰할 최대 파일 수 |
-| `instructions` | — | 리포지토리별 추가 지침 |
+서버 환경변수로 전체 기본값을 덮어쓸 수도 있다. 이쪽이 설정 파일보다 우선한다.
 
-출력은 `findings`, `verdict`, `prompt_tokens`, `completion_tokens`.
+| 환경변수 | 대응 설정 |
+| --- | --- |
+| `REVIEWBOT_MODEL` | `model` |
+| `REVIEWBOT_BASE_URL` | `baseUrl` |
+| `REVIEWBOT_FALLBACK_MODELS` | `fallbackModels` (쉼표 구분) |
+| `REVIEWBOT_LANGUAGE` | `language` |
+| `REVIEWBOT_MIN_SEVERITY` | `minSeverity` |
+| `REVIEWBOT_AUTO_REVIEW` | `autoReview` |
+| `REVIEWBOT_MAX_FILES` | `maxFiles` |
+| `REVIEWBOT_TRIGGER_PREFIX` | `triggerPrefix` |
+| `REVIEWBOT_INSTRUCTIONS` | `customInstructions` |
 
 ---
 
@@ -230,11 +206,72 @@ GitHub Actions에서 쓰려면 러너가 `ssh.gsmsv.site:26145` 에 닿을 수 �
 
 ---
 
+## 대안: GitHub Actions로 돌리기
+
+서버를 띄우기 어렵다면 Action으로도 쓸 수 있다. 다만 리뷰마다 Actions 실행 기록이 남고
+Actions 분을 소모한다 — 이 리포지토리가 서버 방식으로 옮겨온 이유가 그것이다.
+
+리뷰 대상 리포지토리에 워크플로를 추가하고 `GSML_API_KEY` 시크릿을 등록한다.
+
+```yaml
+name: Code Review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: code-review-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event.issue.pull_request != null && startsWith(github.event.comment.body, '/'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Resolve PR head
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "issue_comment" ]; then
+            sha=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}" --jq .head.sha)
+          else
+            sha="${{ github.event.pull_request.head.sha }}"
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.pr.outputs.sha }}
+
+      - uses: it-play/Code-Review-Bot@main
+        with:
+          gsml-api-key: ${{ secrets.GSML_API_KEY }}
+```
+
+`/review` 코멘트로 트리거하려면 이 워크플로가 **기본 브랜치에** 있어야 한다 —
+GitHub은 `issue_comment` 이벤트에 대해 기본 브랜치의 워크플로만 읽는다.
+
+액션 input은 [`action.yml`](action.yml) 참고. `auto-review: false` 로 두면 코멘트로 부를 때만 돈다.
+
+---
+
 ## 로컬에서 돌려보기
 
 ```bash
 npm install
-cp .env.example .env   # GSML_API_KEY, GITHUB_TOKEN 채우기
+cp .env.example .env   # GSML_API_KEY, GITHUB_TOKEN 채우기 (로컬 CLI는 개인 토큰을 쓴다)
 
 # 게시하지 않고 결과만 확인
 npm run review -- --repo it-play/Code-Review-Bot --pr 12 --dry-run
@@ -251,7 +288,7 @@ npm run review -- --repo it-play/Code-Review-Bot --pr 12 --ask "이 변경이 �
 ## gemini-code-assist에서 갈아타기
 
 1. 리포지토리 설정에서 gemini-code-assist GitHub App을 제거하거나, `.gemini/config.yaml` 에서 자동 리뷰를 끈다.
-2. 위 워크플로를 추가하고 `GSML_API_KEY` 시크릿을 등록한다. (App을 쓴다면 `REVIEW_APP_ID`, `REVIEW_APP_PRIVATE_KEY` 도)
+2. 리뷰 서버를 띄우고, App을 그 리포지토리에 설치한다. 리포지토리에는 아무것도 추가하지 않아도 된다.
 3. 기존에 `.gemini/styleguide.md` 를 쓰고 있었다면 그 내용을 `.reviewbot/context.md` 로 옮긴다 — 매 리뷰에 그대로 실린다.
 
 트리거는 `/gemini review` → `/review`, `/gemini summary` → `/summary` 로 대응된다.
@@ -266,17 +303,29 @@ npm test            # 순수 로직 단위 테스트 (네트워크 없음)
 npm run build       # dist/index.mjs 번들
 ```
 
+`npm run build` 는 `dist/index.mjs`(Actions용)와 `dist/server.mjs`(도커용) 두 개를 만든다.
 `dist/` 는 커밋한다 — Action이 `npm install` 없이 실행되어야 하기 때문이다.
-소스를 고쳤으면 `npm run build` 결과를 같이 커밋해야 하고, CI가 어긋남을 검사한다.
+소스를 고쳤으면 빌드 결과를 같이 커밋해야 하고, CI가 어긋남을 검사한다.
+
+**워크트리에서 빌드할 때 주의**: 워크트리에 자체 `node_modules` 가 없으면 node가 상위 디렉터리의
+것을 쓰고, esbuild가 번들에 `../../../node_modules/...` 경로를 박아 CI 재빌드와 어긋난다.
+워크트리 안에서 `npm ci` 를 먼저 돌려야 한다.
 
 ```
 src/
-  index.ts          GitHub Actions 진입점 · 이벤트 라우팅
+  server/
+    index.ts        웹훅 서버 진입점 (HTTP · 라우팅)
+    webhook.ts      서명 검증 · 본문 읽기
+    handler.ts      이벤트 필터 · 권한 확인 · 리뷰 실행
+    queue.ts        동시 실행 1의 작업 큐
+    workspace.ts    리뷰 대상 커밋 얕은 체크아웃
+  index.ts          GitHub Actions 진입점 (대안 경로)
   cli.ts            로컬 실행용 CLI
-  config.ts         기본값 → .reviewbot/config.yml → 액션 input 병합
+  config.ts         기본값 → .reviewbot/config.yml → 환경변수 병합
   llm/client.ts     OpenAI 호환 호출 · 재시도 · 추론 블록 분리 · JSON 검증/교정
   github/
-    event.ts        이벤트 페이로드 → 트리거 정규화
+    event.ts        이벤트 페이로드 → 트리거 정규화 (Actions·웹훅 공용)
+    app.ts          GitHub App JWT 서명 · 설치 토큰 발급
     client.ts       Octokit 래퍼 (리뷰 게시, 권한 확인, 파일 커밋)
     diff.ts         unified diff 파서 · 줄 번호 계산 · 위치 검증
   context/
