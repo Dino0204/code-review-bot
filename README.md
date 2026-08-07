@@ -68,11 +68,15 @@ jobs:
       github.event_name == 'pull_request' ||
       (github.event.issue.pull_request != null && startsWith(github.event.comment.body, '/'))
     runs-on: ubuntu-latest
+    # 스텝의 if: 에서는 secrets 를 읽을 수 없어 env로 옮긴다
+    env:
+      HAS_APP: ${{ secrets.REVIEW_APP_ID }}
     steps:
-      # App을 안 쓸 거라면 이 스텝과 아래 두 곳의 `token:` 을 지운다.
-      # 그러면 ${{ github.token }} 으로 동작하고, 코멘트는 github-actions[bot] 이름으로 달린다.
+      # App 시크릿을 등록하지 않았으면 이 스텝을 건너뛰고 github.token 으로 동작한다.
+      # 그때 코멘트는 github-actions[bot] 이름으로 달린다.
       - name: App 설치 토큰 발급
         id: app-token
+        if: env.HAS_APP != ''
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ secrets.REVIEW_APP_ID }}
@@ -81,7 +85,7 @@ jobs:
       - name: Resolve PR head
         id: pr
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
         run: |
           if [ "${{ github.event_name }}" = "issue_comment" ]; then
             sha=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}" --jq .head.sha)
@@ -94,12 +98,12 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ steps.pr.outputs.sha }}
-          token: ${{ steps.app-token.outputs.token }}
+          token: ${{ steps.app-token.outputs.token || github.token }}
 
       - uses: it-play/Code-Review-Bot@main
         with:
           gsml-api-key: ${{ secrets.GSML_API_KEY }}
-          github-token: ${{ steps.app-token.outputs.token }}
+          github-token: ${{ steps.app-token.outputs.token || github.token }}
 ```
 
 ### 4. 끝
