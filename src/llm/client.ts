@@ -205,7 +205,9 @@ export class LlmClient {
         const serverHint = lastError instanceof LlmError ? lastError.retryAfterMs : undefined
         const backoff = Math.min(60_000, 2 ** (attempt - 1) * 8000) + Math.floor(Math.random() * 2000)
         const delay = Math.max(serverHint ?? 0, backoff)
-        log.warn(`모델 호출 재시도 ${attempt}/${this.maxRetries} — ${Math.round(delay / 1000)}초 대기`)
+        // 무엇 때문에 다시 부르는지 남긴다 — 이유 없이 기다리기만 하면 손댈 곳을 알 수 없다
+        const reason = lastError instanceof Error ? lastError.message : String(lastError)
+        log.warn(`모델 호출 재시도 ${attempt}/${this.maxRetries} (${Math.round(delay / 1000)}초 대기) — ${reason}`)
         await sleep(delay)
       }
       try {
@@ -276,6 +278,11 @@ export class LlmClient {
       this.totalUsage.prompt_tokens += result.usage.prompt_tokens
       this.totalUsage.completion_tokens += result.usage.completion_tokens
       this.totalUsage.total_tokens += result.usage.total_tokens
+      // 호출마다 남긴다 — 하루 한도가 있는 키라, 다 끝난 뒤에 총량만 알면 늦다
+      log.info(
+        `모델 응답: ${result.usage.prompt_tokens} in / ${result.usage.completion_tokens} out` +
+          `${result.truncated ? ' (잘림)' : ''} — 이번 실행 누적 ${this.totalUsage.total_tokens}`,
+      )
     }
     return result
   }

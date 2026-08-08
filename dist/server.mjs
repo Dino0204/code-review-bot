@@ -27112,7 +27112,8 @@ var LlmClient = class {
         const serverHint = lastError instanceof LlmError ? lastError.retryAfterMs : void 0;
         const backoff = Math.min(6e4, 2 ** (attempt - 1) * 8e3) + Math.floor(Math.random() * 2e3);
         const delay = Math.max(serverHint ?? 0, backoff);
-        log.warn(`\uBAA8\uB378 \uD638\uCD9C \uC7AC\uC2DC\uB3C4 ${attempt}/${this.maxRetries} \u2014 ${Math.round(delay / 1e3)}\uCD08 \uB300\uAE30`);
+        const reason = lastError instanceof Error ? lastError.message : String(lastError);
+        log.warn(`\uBAA8\uB378 \uD638\uCD9C \uC7AC\uC2DC\uB3C4 ${attempt}/${this.maxRetries} (${Math.round(delay / 1e3)}\uCD08 \uB300\uAE30) \u2014 ${reason}`);
         await sleep(delay);
       }
       try {
@@ -27177,6 +27178,9 @@ var LlmClient = class {
       this.totalUsage.prompt_tokens += result.usage.prompt_tokens;
       this.totalUsage.completion_tokens += result.usage.completion_tokens;
       this.totalUsage.total_tokens += result.usage.total_tokens;
+      log.info(
+        `\uBAA8\uB378 \uC751\uB2F5: ${result.usage.prompt_tokens} in / ${result.usage.completion_tokens} out${result.truncated ? " (\uC798\uB9BC)" : ""} \u2014 \uC774\uBC88 \uC2E4\uD589 \uB204\uC801 ${this.totalUsage.total_tokens}`
+      );
     }
     return result;
   }
