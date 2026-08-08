@@ -26969,6 +26969,28 @@ function meetsSeverity(severity, threshold) {
   return severityRank(severity) <= severityRank(threshold);
 }
 
+// src/net.ts
+function describeNetworkError(error52) {
+  if (!(error52 instanceof Error)) return String(error52);
+  if (error52.name === "TimeoutError" || error52.name === "AbortError") return "\uC751\uB2F5 \uC2DC\uAC04 \uCD08\uACFC";
+  const cause = error52.cause;
+  if (cause instanceof Error) {
+    const code = cause.code;
+    const hint = code ? NETWORK_HINTS[code] : void 0;
+    return [code, cause.message, hint && `\u2014 ${hint}`].filter(Boolean).join(" ");
+  }
+  return error52.message;
+}
+var NETWORK_HINTS = {
+  ENOTFOUND: "DNS\uB85C \uC8FC\uC18C\uB97C \uBABB \uCC3E\uC558\uB2E4. \uCEE8\uD14C\uC774\uB108\uC758 DNS \uC124\uC815\uC744 \uD655\uC778\uD574\uC57C \uD55C\uB2E4",
+  EAI_AGAIN: "DNS \uC870\uD68C\uAC00 \uC2E4\uD328\uD588\uB2E4. \uCEE8\uD14C\uC774\uB108\uC758 DNS \uC124\uC815\uC744 \uD655\uC778\uD574\uC57C \uD55C\uB2E4",
+  ECONNREFUSED: "\uC5F0\uACB0\uC774 \uAC70\uBD80\uB410\uB2E4",
+  ETIMEDOUT: "\uC5F0\uACB0\uC774 \uC2DC\uAC04 \uCD08\uACFC\uB410\uB2E4. \uBC29\uD654\uBCBD\uC774 \uB9C9\uACE0 \uC788\uC744 \uC218 \uC788\uB2E4",
+  ECONNRESET: "\uC5F0\uACB0\uC774 \uB04A\uACBC\uB2E4. \uC911\uAC04\uC5D0\uC11C \uCC28\uB2E8\uB410\uC744 \uC218 \uC788\uB2E4",
+  UNABLE_TO_VERIFY_LEAF_SIGNATURE: "\uC778\uC99D\uC11C\uB97C \uAC80\uC99D\uD558\uC9C0 \uBABB\uD588\uB2E4. \uC911\uAC04\uC5D0\uC11C TLS\uB97C \uAC00\uB85C\uCC44\uB294 \uC7A5\uBE44\uAC00 \uC788\uC744 \uC218 \uC788\uB2E4",
+  SELF_SIGNED_CERT_IN_CHAIN: "\uC790\uCCB4 \uC11C\uBA85 \uC778\uC99D\uC11C\uAC00 \uB07C\uC5B4 \uC788\uB2E4. TLS\uB97C \uAC00\uB85C\uCC44\uB294 \uC7A5\uBE44\uAC00 \uC788\uC744 \uC218 \uC788\uB2E4"
+};
+
 // src/llm/client.ts
 var LlmError = class extends Error {
   constructor(message, status, code, retriable = false, retryAfterMs) {
@@ -27150,7 +27172,7 @@ var LlmClient = class {
         signal: AbortSignal.timeout(this.timeoutMs)
       });
     } catch (error52) {
-      throw new LlmError(`\uBAA8\uB378 \uC11C\uBC84 \uB124\uD2B8\uC6CC\uD06C \uC624\uB958: ${error52.message}`, void 0, void 0, true);
+      throw new LlmError(`\uBAA8\uB378 \uC11C\uBC84 \uB124\uD2B8\uC6CC\uD06C \uC624\uB958: ${describeNetworkError(error52)}`, void 0, void 0, true);
     }
     const text = await response.text();
     if (!response.ok) {

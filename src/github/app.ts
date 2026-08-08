@@ -1,4 +1,5 @@
 import { createSign } from 'node:crypto'
+import { describeNetworkError } from '../net'
 import { log } from '../logger'
 
 /**
@@ -42,15 +43,24 @@ export class GitHubApp {
     const cached = this.cache.get(installationId)
     if (cached && cached.expiresAt - RENEW_MARGIN_MS > Date.now()) return cached.token
 
-    const response = await fetch(`${API}/app/installations/${installationId}/access_tokens`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.jwt()}`,
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'User-Agent': 'gsml-code-review-bot',
-      },
-    })
+    const url = `${API}/app/installations/${installationId}/access_tokens`
+    let response: Response
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.jwt()}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+          'User-Agent': 'gsml-code-review-bot',
+        },
+        signal: AbortSignal.timeout(30_000),
+      })
+    } catch (error) {
+      // fetch는 네트워크 실패를 전부 "fetch failed"로 뭉개고 진짜 원인을 cause에 숨긴다.
+      // 여기가 봇이 GitHub에 처음 말을 거는 지점이라, 망 문제면 이 메시지만 보고 판단해야 한다.
+      throw new Error(`GitHub API에 연결하지 못했다 (${url}): ${describeNetworkError(error)}`)
+    }
 
     const text = await response.text()
     if (!response.ok) {

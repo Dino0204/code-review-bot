@@ -1,4 +1,5 @@
 import type { ZodType } from 'zod'
+import { describeNetworkError } from '../net'
 import { log } from '../logger'
 
 export interface ChatMessage {
@@ -293,7 +294,7 @@ export class LlmClient {
       })
     } catch (error) {
       // 네트워크 오류/타임아웃은 재시도 대상
-      throw new LlmError(`모델 서버 네트워크 오류: ${(error as Error).message}`, undefined, undefined, true)
+      throw new LlmError(`모델 서버 네트워크 오류: ${describeNetworkError(error)}`, undefined, undefined, true)
     }
 
     const text = await response.text()

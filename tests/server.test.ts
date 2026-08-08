@@ -6,6 +6,7 @@ import { ReviewQueue } from '../src/server/queue'
 import { accept } from '../src/server/handler'
 import type { HandlerDeps } from '../src/server/handler'
 import { normalizePrivateKey, createAppJwt } from '../src/github/app'
+import { describeNetworkError } from '../src/net'
 import { parseTrigger } from '../src/github/event'
 import type { RawEvent } from '../src/github/event'
 
@@ -127,6 +128,28 @@ test('개인키로 App JWT를 서명하고 검증할 수 있다', () => {
   const verifier = createVerify('RSA-SHA256')
   verifier.update(`${header}.${body}`)
   assert.equal(verifier.verify(publicKey, Buffer.from(signature!, 'base64url')), true)
+})
+
+// --- 네트워크 오류 설명 ---
+
+test('fetch failed 뒤에 숨은 진짜 원인을 드러낸다', () => {
+  const error = new TypeError('fetch failed')
+  ;(error as { cause?: unknown }).cause = Object.assign(new Error('getaddrinfo ENOTFOUND api.github.com'), {
+    code: 'ENOTFOUND',
+  })
+  const described = describeNetworkError(error)
+  assert.match(described, /ENOTFOUND/)
+  assert.match(described, /DNS/)
+})
+
+test('시간 초과는 그렇게 말한다', () => {
+  const error = new Error('The operation was aborted')
+  error.name = 'TimeoutError'
+  assert.equal(describeNetworkError(error), '응답 시간 초과')
+})
+
+test('cause가 없으면 원래 메시지를 쓴다', () => {
+  assert.equal(describeNetworkError(new Error('무언가 잘못됐다')), '무언가 잘못됐다')
 })
 
 // --- 웹훅 이벤트 필터 ---
