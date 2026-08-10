@@ -13181,31 +13181,8 @@ function isBotActor(login) {
 }
 
 // src/review/commands.ts
-function parseCommand(body, triggerPrefix = "/review") {
-  const lines = body.split("\n").map((line) => line.trim());
-  for (const line of lines) {
-    if (!line.startsWith("/")) continue;
-    if (line !== triggerPrefix && !line.startsWith(`${triggerPrefix} `)) continue;
-    const rest = line.slice(triggerPrefix.length).trim();
-    if (!rest) return { name: "review", focus: "" };
-    const sub = (rest.split(/\s+/)[0] ?? "").toLowerCase();
-    if (sub === "help" || sub === "-h" || sub === "--help") return { name: "help" };
-    return { name: "review", focus: rest };
-  }
-  return void 0;
-}
-function helpText(triggerPrefix, model) {
-  return [
-    `### \u{1F916} \uCF54\uB4DC \uB9AC\uBDF0 \uBD07 \uC0AC\uC6A9\uBC95 (\`${model}\`)`,
-    "",
-    "| \uBA85\uB839 | \uC124\uBA85 |",
-    "| --- | --- |",
-    `| \`${triggerPrefix}\` | \uBCC0\uACBD\uB41C diff\uB97C \uB9AC\uBDF0\uD55C\uB2E4 |`,
-    `| \`${triggerPrefix} security\` | \uD2B9\uC815 \uAD00\uC810(security, performance, \uB3D9\uC2DC\uC131 \u2026)\uC5D0 \uC9D1\uC911\uD574 \uB9AC\uBDF0\uD55C\uB2E4 |`,
-    `| \`${triggerPrefix} help\` | \uC774 \uB3C4\uC6C0\uB9D0 |`,
-    "",
-    "PR\uC774 \uC5F4\uB9AC\uAC70\uB098 \uAC31\uC2E0\uB418\uBA74 \uC790\uB3D9\uC73C\uB85C \uB9AC\uBDF0\uD55C\uB2E4. \uC124\uC815\uC740 \uB9AC\uD3EC\uC9C0\uD1A0\uB9AC\uC758 `.reviewbot/config.yml` \uC5D0\uC11C \uC77D\uB294\uB2E4."
-  ].join("\n");
+function hasReviewTrigger(body, triggerPrefix = "/review") {
+  return body.split("\n").map((line) => line.trim()).some((line) => line === triggerPrefix || line.startsWith(`${triggerPrefix} `));
 }
 
 // node_modules/balanced-match/dist/esm/index.js
@@ -29868,11 +29845,6 @@ function renderDiff(context) {
 }
 function buildReviewMessages(context) {
   const { config: config2 } = context;
-  const instructions = [
-    context.focus ? `\uC774\uBC88 \uB9AC\uBDF0\uC758 \uAD00\uC2EC \uC601\uC5ED: **${context.focus}** \u2014 \uC774 \uAD00\uC810\uC744 \uC6B0\uC120\uD574\uC11C \uBCF4\uB418, \uBA85\uBC31\uD55C \uACB0\uD568\uC740 \uC601\uC5ED \uBC16\uC774\uB77C\uB3C4 \uC9C0\uC801\uD55C\uB2E4.` : "",
-    config2.customInstructions ? `\uB9AC\uD3EC\uC9C0\uD1A0\uB9AC \uCD94\uAC00 \uC9C0\uCE68:
-${config2.customInstructions}` : ""
-  ].filter(Boolean).join("\n\n");
   const userPrompt = [
     "\uC544\uB798 Pull Request\uB97C \uB9AC\uBDF0\uD558\uB77C.",
     "",
@@ -29881,9 +29853,9 @@ ${config2.customInstructions}` : ""
     "",
     "## \uBCC0\uACBD \uC0AC\uD56D (diff)",
     renderDiff(context),
-    instructions ? `
-## \uCD94\uAC00 \uC9C0\uC2DC
-${instructions}` : "",
+    config2.customInstructions ? `
+## \uB9AC\uD3EC\uC9C0\uD1A0\uB9AC \uCD94\uAC00 \uC9C0\uCE68
+${config2.customInstructions}` : "",
     "\n\uC9C0\uC815\uB41C JSON \uD615\uC2DD\uC73C\uB85C\uB9CC \uC751\uB2F5\uD558\uB77C."
   ].join("\n");
   return [
@@ -29996,14 +29968,14 @@ function countBySeverity(findings) {
 }
 
 // src/review/runner.ts
-async function gatherContext(deps, pr, options = {}) {
+async function gatherContext(deps, pr) {
   const { github, config: config2 } = deps;
   const rawDiff = await github.getPullRequestDiff(pr.number);
   const allFiles = parseUnifiedDiff(rawDiff);
   const { selected, skipped } = filterFiles(allFiles, config2);
   log.info(`diff \uD30C\uC77C ${allFiles.length}\uAC1C \uC911 ${selected.length}\uAC1C \uB9AC\uBDF0 \uB300\uC0C1 (${skipped}\uAC1C \uC81C\uC678)`);
   return {
-    context: { config: config2, pr, diffFiles: selected, focus: options.focus ?? "" },
+    context: { config: config2, pr, diffFiles: selected },
     skippedFiles: skipped
   };
 }
@@ -30037,9 +30009,9 @@ function chunkFiles(files, config2) {
   if (current.length) chunks.push(current);
   return chunks.length ? chunks : [[]];
 }
-async function runReview(deps, pr, options = {}) {
+async function runReview(deps, pr) {
   const { github, llm, config: config2 } = deps;
-  const { context, skippedFiles } = await gatherContext(deps, pr, options);
+  const { context, skippedFiles } = await gatherContext(deps, pr);
   if (context.diffFiles.length === 0) {
     await github.createIssueComment(
       pr.number,
@@ -30228,14 +30200,13 @@ function accept(deps, eventName, payload) {
     run: () => execute(deps, repo.owner, repo.repo, installationId, trigger)
   };
 }
-function resolveCommand(trigger, triggerPrefix, autoReview) {
+function shouldReview(trigger, triggerPrefix, autoReview) {
   switch (trigger.kind) {
     case "issue_comment":
     case "review_comment":
-      return parseCommand(trigger.body, triggerPrefix);
+      return hasReviewTrigger(trigger.body, triggerPrefix);
     case "pull_request":
-      if (!autoReview) return void 0;
-      return { name: "review", focus: "" };
+      return autoReview;
   }
 }
 async function execute(deps, owner, repo, installationId, trigger) {
@@ -30255,17 +30226,12 @@ async function execute(deps, owner, repo, installationId, trigger) {
   const checkout = await checkoutCommit(owner, repo, pr.headSha, token);
   try {
     const config2 = loadConfig(checkout.path);
-    const command = resolveCommand(trigger, config2.triggerPrefix, config2.autoReview);
-    if (!command) {
-      log.debug(`${slug}#${trigger.pr}: \uC2E4\uD589\uD560 \uBA85\uB839\uC774 \uC5C6\uB2E4`);
+    if (!shouldReview(trigger, config2.triggerPrefix, config2.autoReview)) {
+      log.debug(`${slug}#${trigger.pr}: \uB9AC\uBDF0 \uB300\uC0C1\uC774 \uC544\uB2C8\uB2E4`);
       return;
     }
     if (byComment) await github.addReaction(trigger.commentId, "eyes");
-    if (command.name === "help") {
-      await github.createIssueComment(trigger.pr, helpText(config2.triggerPrefix, config2.model));
-      return;
-    }
-    log.info(`${slug}#${pr.number} "${pr.title}" \u2014 \uBA85\uB839: ${command.name}`);
+    log.info(`${slug}#${pr.number} "${pr.title}" \uB9AC\uBDF0 \uC2DC\uC791`);
     const llm = new LlmClient({
       apiKey: deps.gsmlApiKey,
       baseUrl: config2.baseUrl,
@@ -30273,7 +30239,7 @@ async function execute(deps, owner, repo, installationId, trigger) {
     });
     const runnerDeps = { github, llm, config: config2, workspace: checkout.path };
     try {
-      const outcome = await runReview(runnerDeps, pr, { focus: command.focus });
+      const outcome = await runReview(runnerDeps, pr);
       log.info(`${slug}#${pr.number} \uB9AC\uBDF0 \uC644\uB8CC \u2014 \uC9C0\uC801 ${outcome.findings}\uAC74, \uD310\uC815 ${outcome.verdict}`);
     } catch (error51) {
       const message = error51 instanceof Error ? error51.message : String(error51);

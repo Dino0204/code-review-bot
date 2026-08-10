@@ -19,21 +19,13 @@ export interface RunnerDeps {
   workspace: string
 }
 
-export interface GatherOptions {
-  focus?: string
-}
-
-export interface GatheredContext {
+interface GatheredContext {
   context: ReviewContext
   skippedFiles: number
 }
 
 /** PR diff를 받아 리뷰 대상 파일만 추린다 */
-export async function gatherContext(
-  deps: RunnerDeps,
-  pr: PullRequestInfo,
-  options: GatherOptions = {},
-): Promise<GatheredContext> {
+async function gatherContext(deps: RunnerDeps, pr: PullRequestInfo): Promise<GatheredContext> {
   const { github, config } = deps
 
   const rawDiff = await github.getPullRequestDiff(pr.number)
@@ -42,7 +34,7 @@ export async function gatherContext(
   log.info(`diff 파일 ${allFiles.length}개 중 ${selected.length}개 리뷰 대상 (${skipped}개 제외)`)
 
   return {
-    context: { config, pr, diffFiles: selected, focus: options.focus ?? '' },
+    context: { config, pr, diffFiles: selected },
     skippedFiles: skipped,
   }
 }
@@ -90,13 +82,9 @@ export interface ReviewOutcome {
   verdict: ReviewResult['verdict']
 }
 
-export async function runReview(
-  deps: RunnerDeps,
-  pr: PullRequestInfo,
-  options: GatherOptions = {},
-): Promise<ReviewOutcome> {
+export async function runReview(deps: RunnerDeps, pr: PullRequestInfo): Promise<ReviewOutcome> {
   const { github, llm, config } = deps
-  const { context, skippedFiles } = await gatherContext(deps, pr, options)
+  const { context, skippedFiles } = await gatherContext(deps, pr)
 
   if (context.diffFiles.length === 0) {
     await github.createIssueComment(

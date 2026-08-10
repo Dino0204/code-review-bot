@@ -10,8 +10,6 @@ export interface ReviewContext {
   config: BotConfig
   pr: PullRequestInfo
   diffFiles: DiffFile[]
-  /** 사용자가 지정한 관심 영역 */
-  focus: string
 }
 
 const LANGUAGE_LABEL: Record<string, string> = {
@@ -113,13 +111,6 @@ function renderDiff(context: ReviewContext): string {
 export function buildReviewMessages(context: ReviewContext): ChatMessage[] {
   const { config } = context
 
-  const instructions = [
-    context.focus ? `이번 리뷰의 관심 영역: **${context.focus}** — 이 관점을 우선해서 보되, 명백한 결함은 영역 밖이라도 지적한다.` : '',
-    config.customInstructions ? `리포지토리 추가 지침:\n${config.customInstructions}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n\n')
-
   const userPrompt = [
     '아래 Pull Request를 리뷰하라.',
     '',
@@ -128,7 +119,7 @@ export function buildReviewMessages(context: ReviewContext): ChatMessage[] {
     '',
     '## 변경 사항 (diff)',
     renderDiff(context),
-    instructions ? `\n## 추가 지시\n${instructions}` : '',
+    config.customInstructions ? `\n## 리포지토리 추가 지침\n${config.customInstructions}` : '',
     '\n지정된 JSON 형식으로만 응답하라.',
   ].join('\n')
 

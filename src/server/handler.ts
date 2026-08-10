@@ -4,8 +4,7 @@ import { GitHubClient } from '../github/client'
 import type { GitHubApp } from '../github/app'
 import { isBotActor, isTrustedAssociation, parseTrigger, repoRefFrom } from '../github/event'
 import type { RawEvent, Trigger } from '../github/event'
-import { helpText, parseCommand } from '../review/commands'
-import type { Command } from '../review/commands'
+import { hasReviewTrigger } from '../review/commands'
 import { runReview } from '../review/runner'
 import type { RunnerDeps } from '../review/runner'
 import { renderError } from '../review/render'
@@ -72,14 +71,14 @@ export function accept(deps: HandlerDeps, eventName: string, payload: RawEvent):
   }
 }
 
-function resolveCommand(trigger: Trigger, triggerPrefix: string, autoReview: boolean): Command | undefined {
+/** 이 트리거로 리뷰를 돌려야 하는가. 설정을 읽은 뒤에 판단한다. */
+function shouldReview(trigger: Trigger, triggerPrefix: string, autoReview: boolean): boolean {
   switch (trigger.kind) {
     case 'issue_comment':
     case 'review_comment':
-      return parseCommand(trigger.body, triggerPrefix)
+      return hasReviewTrigger(trigger.body, triggerPrefix)
     case 'pull_request':
-      if (!autoReview) return undefined
-      return { name: 'review', focus: '' }
+      return autoReview
   }
 }
 
@@ -111,20 +110,14 @@ async function execute(
 
   try {
     const config = loadConfig(checkout.path)
-    const command = resolveCommand(trigger, config.triggerPrefix, config.autoReview)
-    if (!command) {
-      log.debug(`${slug}#${trigger.pr}: 실행할 명령이 없다`)
+    if (!shouldReview(trigger, config.triggerPrefix, config.autoReview)) {
+      log.debug(`${slug}#${trigger.pr}: 리뷰 대상이 아니다`)
       return
     }
 
     if (byComment) await github.addReaction(trigger.commentId, 'eyes')
 
-    if (command.name === 'help') {
-      await github.createIssueComment(trigger.pr, helpText(config.triggerPrefix, config.model))
-      return
-    }
-
-    log.info(`${slug}#${pr.number} "${pr.title}" — 명령: ${command.name}`)
+    log.info(`${slug}#${pr.number} "${pr.title}" 리뷰 시작`)
 
     const llm = new LlmClient({
       apiKey: deps.gsmlApiKey,
@@ -134,7 +127,7 @@ async function execute(
     const runnerDeps: RunnerDeps = { github, llm, config, workspace: checkout.path }
 
     try {
-      const outcome = await runReview(runnerDeps, pr, { focus: command.focus })
+      const outcome = await runReview(runnerDeps, pr)
       log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건, 판정 ${outcome.verdict}`)
     } catch (error) {
       // 실패 사실을 PR에서 바로 볼 수 있게 남긴다
