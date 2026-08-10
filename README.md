@@ -218,7 +218,7 @@ src/
   llm.ts            OpenAI 호환 호출 · JSON 추출 · 스키마 검증
   github/
     event.ts        웹훅 페이로드 → 트리거 정규화
-    app.ts          GitHub App JWT 서명 · 설치 토큰 발급
+    app.ts          GitHub App 설치 토큰 (@octokit/auth-app) · PEM 복원
     client.ts       Octokit 래퍼 (리뷰 게시, 권한 확인)
     diff.ts         unified diff 파서 · 줄 번호 계산 · 위치 검증
   review/

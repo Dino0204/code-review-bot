@@ -1,11 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createHmac, createVerify, generateKeyPairSync } from 'node:crypto'
+import { createHmac } from 'node:crypto'
 import { verifySignature } from '../src/server/webhook'
 import { ReviewQueue } from '../src/server/queue'
 import { accept } from '../src/server/handler'
 import type { HandlerDeps } from '../src/server/handler'
-import { normalizePrivateKey, createAppJwt } from '../src/github/app'
+import { normalizePrivateKey } from '../src/github/app'
 import { describeNetworkError } from '../src/net'
 import { parseTrigger } from '../src/github/event'
 import type { RawEvent } from '../src/github/event'
@@ -109,27 +109,6 @@ test('이미 줄바꿈이 살아 있는 PEM은 그대로 둔다', () => {
   assert.equal(normalizePrivateKey(pem), pem)
 })
 
-test('개인키로 App JWT를 서명하고 검증할 수 있다', () => {
-  const { privateKey, publicKey } = generateKeyPairSync('rsa', {
-    modulusLength: 2048,
-    privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
-    publicKeyEncoding: { type: 'spki', format: 'pem' },
-  })
-
-  const jwt = createAppJwt('12345', privateKey)
-  const [header, body, signature] = jwt.split('.')
-  assert.equal(jwt.split('.').length, 3)
-
-  const claims = JSON.parse(Buffer.from(body!, 'base64url').toString()) as { iss: string; exp: number; iat: number }
-  assert.equal(claims.iss, '12345')
-  assert.ok(claims.exp > claims.iat, '만료가 발급보다 뒤여야 한다')
-  assert.equal(JSON.parse(Buffer.from(header!, 'base64url').toString()).alg, 'RS256')
-
-  const verifier = createVerify('RSA-SHA256')
-  verifier.update(`${header}.${body}`)
-  assert.equal(verifier.verify(publicKey, Buffer.from(signature!, 'base64url')), true)
-})
-
 // --- 네트워크 오류 설명 ---
 
 test('fetch failed 뒤에 숨은 진짜 원인을 드러낸다', () => {
@@ -150,6 +129,16 @@ test('시간 초과는 그렇게 말한다', () => {
 
 test('cause가 없으면 원래 메시지를 쓴다', () => {
   assert.equal(describeNetworkError(new Error('무언가 잘못됐다')), '무언가 잘못됐다')
+})
+
+// octokit은 원인을 이미 본문에 풀어 담고 cause에는 "fetch failed"만 남긴다.
+// cause를 우선하면 오히려 정보가 사라지므로 본문에서 코드를 찾아야 한다.
+test('cause에 코드가 없으면 본문에서 원인을 찾는다', () => {
+  const error = new Error('connect ECONNREFUSED 127.0.0.1:9999')
+  ;(error as { cause?: unknown }).cause = new Error('fetch failed')
+  const described = describeNetworkError(error)
+  assert.match(described, /ECONNREFUSED 127\.0\.0\.1:9999/)
+  assert.match(described, /연결이 거부됐다/)
 })
 
 // --- 웹훅 이벤트 필터 ---

@@ -11,10 +11,17 @@ export function describeNetworkError(error: unknown): string {
   const cause = (error as { cause?: unknown }).cause
   if (cause instanceof Error) {
     const code = (cause as { code?: string }).code
-    const hint = code ? NETWORK_HINTS[code] : undefined
-    return [code, cause.message, hint && `— ${hint}`].filter(Boolean).join(' ')
+    if (code) {
+      const hint = NETWORK_HINTS[code]
+      return [code, cause.message, hint && `— ${hint}`].filter(Boolean).join(' ')
+    }
   }
-  return error.message
+
+  // cause에 코드가 없는 경우 — octokit처럼 이미 원인을 풀어 본문에 담아둔 라이브러리가 있다.
+  // 그때 cause를 보면 오히려 "fetch failed"만 나오므로 본문에서 코드를 찾는다.
+  const matched = Object.keys(NETWORK_HINTS).find((code) => error.message.includes(code))
+  const hint = matched ? NETWORK_HINTS[matched] : undefined
+  return hint ? `${error.message} — ${hint}` : error.message
 }
 
 /** 자주 나오는 오류에 대한 사람 말 설명 */
