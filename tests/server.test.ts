@@ -5,7 +5,7 @@ import { verifySignature } from '../src/server/webhook'
 import { ReviewQueue } from '../src/server/queue'
 import { accept } from '../src/server/handler'
 import type { HandlerDeps } from '../src/server/handler'
-import { normalizePrivateKey } from '../src/github/app'
+import { normalizePrivateKey, isTransientAuthError } from '../src/github/app'
 import { describeNetworkError } from '../src/net'
 import { parseTrigger } from '../src/github/event'
 import type { RawEvent } from '../src/github/event'
@@ -107,6 +107,16 @@ test('리터럴 \\n으로 넘어온 PEM을 되살린다', () => {
 test('이미 줄바꿈이 살아 있는 PEM은 그대로 둔다', () => {
   const pem = '-----BEGIN RSA PRIVATE KEY-----\nAAAA\n-----END RSA PRIVATE KEY-----'
   assert.equal(normalizePrivateKey(pem), pem)
+})
+
+// octokit은 네트워크 실패를 status 500 으로, 자격증명 실패를 4xx 로 준다.
+// 4xx 는 다시 불러도 같은 답이 오므로 재시도하면 안 된다.
+test('자격증명 실패는 재시도하지 않고 네트워크 실패만 재시도한다', () => {
+  assert.equal(isTransientAuthError(Object.assign(new Error('x'), { status: 500 })), true)
+  assert.equal(isTransientAuthError(Object.assign(new Error('x'), { status: 429 })), true)
+  assert.equal(isTransientAuthError(Object.assign(new Error('Integration not found'), { status: 404 })), false)
+  assert.equal(isTransientAuthError(Object.assign(new Error('Bad credentials'), { status: 401 })), false)
+  assert.equal(isTransientAuthError(new Error('상태 코드가 없으면 응답을 못 받은 것')), true)
 })
 
 // --- 네트워크 오류 설명 ---

@@ -9740,35 +9740,6 @@ var NETWORK_HINTS = {
   SELF_SIGNED_CERT_IN_CHAIN: "\uC790\uCCB4 \uC11C\uBA85 \uC778\uC99D\uC11C\uAC00 \uB07C\uC5B4 \uC788\uB2E4. TLS\uB97C \uAC00\uB85C\uCC44\uB294 \uC7A5\uBE44\uAC00 \uC788\uC744 \uC218 \uC788\uB2E4"
 };
 
-// src/github/app.ts
-var GitHubApp = class {
-  auth;
-  constructor(credentials) {
-    if (!credentials.appId) throw new Error("GITHUB_APP_ID\uAC00 \uBE44\uC5B4 \uC788\uB2E4");
-    if (!credentials.privateKey) throw new Error("GITHUB_APP_PRIVATE_KEY\uAC00 \uBE44\uC5B4 \uC788\uB2E4");
-    this.auth = createAppAuth({
-      appId: credentials.appId,
-      privateKey: normalizePrivateKey(credentials.privateKey)
-    });
-  }
-  /** 설치 ID에 대한 액세스 토큰. 만료 전까지는 라이브러리가 캐시를 재사용한다. */
-  async installationToken(installationId) {
-    try {
-      const { token } = await this.auth({ type: "installation", installationId });
-      return token;
-    } catch (error51) {
-      throw new Error(`\uC124\uCE58 \uD1A0\uD070 \uBC1C\uAE09 \uC2E4\uD328 (installation ${installationId}): ${describeNetworkError(error51)}`);
-    }
-  }
-};
-function normalizePrivateKey(raw) {
-  const trimmed = raw.trim();
-  return trimmed.includes("\\n") ? trimmed.replace(/\\n/g, "\n") : trimmed;
-}
-
-// src/config.ts
-var import_yaml = __toESM(require_dist2(), 1);
-
 // src/logger.ts
 var log = {
   debug(message) {
@@ -9785,7 +9756,51 @@ var log = {
   }
 };
 
+// src/github/app.ts
+var MAX_ATTEMPTS = 3;
+function isTransientAuthError(error51) {
+  const status = error51.status;
+  if (typeof status !== "number") return true;
+  return status === 429 || status >= 500;
+}
+var GitHubApp = class {
+  auth;
+  constructor(credentials) {
+    if (!credentials.appId) throw new Error("GITHUB_APP_ID\uAC00 \uBE44\uC5B4 \uC788\uB2E4");
+    if (!credentials.privateKey) throw new Error("GITHUB_APP_PRIVATE_KEY\uAC00 \uBE44\uC5B4 \uC788\uB2E4");
+    this.auth = createAppAuth({
+      appId: credentials.appId,
+      privateKey: normalizePrivateKey(credentials.privateKey)
+    });
+  }
+  /** 설치 ID에 대한 액세스 토큰. 만료 전까지는 라이브러리가 캐시를 재사용한다. */
+  async installationToken(installationId) {
+    let lastError;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        const { token } = await this.auth({ type: "installation", installationId });
+        if (attempt > 1) log.info(`\uC124\uCE58 \uD1A0\uD070 \uBC1C\uAE09 \uC131\uACF5 (${attempt}\uBC88\uC9F8 \uC2DC\uB3C4)`);
+        return token;
+      } catch (error51) {
+        lastError = error51;
+        if (!isTransientAuthError(error51) || attempt === MAX_ATTEMPTS) break;
+        log.warn(`\uC124\uCE58 \uD1A0\uD070 \uBC1C\uAE09 \uC7AC\uC2DC\uB3C4 ${attempt}/${MAX_ATTEMPTS - 1} \u2014 ${describeNetworkError(error51)}`);
+        await sleep(attempt * 1e3);
+      }
+    }
+    throw new Error(`\uC124\uCE58 \uD1A0\uD070 \uBC1C\uAE09 \uC2E4\uD328 (installation ${installationId}): ${describeNetworkError(lastError)}`);
+  }
+};
+function normalizePrivateKey(raw) {
+  const trimmed = raw.trim();
+  return trimmed.includes("\\n") ? trimmed.replace(/\\n/g, "\n") : trimmed;
+}
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // src/config.ts
+var import_yaml = __toESM(require_dist2(), 1);
 var SEVERITIES = ["critical", "major", "minor", "nit"];
 var DEFAULT_CONFIG = {
   // GSML 게이트웨이는 모델 하나만 서빙한다. 모델 ID는 /v1/models 로 확인한다.
