@@ -7504,7 +7504,7 @@ var require_dist2 = __commonJS({
 
 // src/server/index.ts
 import { createServer } from "node:http";
-import { readFileSync as readFileSync2 } from "node:fs";
+import { readFileSync } from "node:fs";
 
 // node_modules/universal-user-agent/index.js
 function getUserAgent() {
@@ -8656,7 +8656,7 @@ function getCachedAuthentication(state, auth22) {
   return newScope === currentScope ? authentication : false;
 }
 async function wait(seconds) {
-  await new Promise((resolve2) => setTimeout(resolve2, seconds * 1e3));
+  await new Promise((resolve) => setTimeout(resolve, seconds * 1e3));
 }
 async function waitForAccessToken(request2, clientId, clientType, verification) {
   try {
@@ -9662,7 +9662,7 @@ async function sendRequestWithRetries(state, request2, options, createdAt, retri
     state.log.warn(
       `[@octokit/auth-app] Retrying after 401 response to account for token replication delay (retry: ${retries}, wait: ${awaitTime / 1e3}s)`
     );
-    await new Promise((resolve2) => setTimeout(resolve2, awaitTime));
+    await new Promise((resolve) => setTimeout(resolve, awaitTime));
     return sendRequestWithRetries(state, request2, options, createdAt, retries);
   }
 }
@@ -9768,8 +9768,6 @@ function normalizePrivateKey(raw) {
 
 // src/config.ts
 var import_yaml = __toESM(require_dist2(), 1);
-import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
 
 // src/logger.ts
 var log = {
@@ -9889,18 +9887,14 @@ function envOverrides() {
   if (env["REVIEWBOT_INSTRUCTIONS"]) out.customInstructions = env["REVIEWBOT_INSTRUCTIONS"];
   return out;
 }
-function loadConfig(workspace) {
+function loadConfig(fileContent) {
   let fromFile = {};
-  for (const candidate of CONFIG_FILES) {
-    const path2 = resolve(workspace, candidate);
-    if (!existsSync(path2)) continue;
+  if (fileContent !== void 0) {
     try {
-      fromFile = pickFileConfig((0, import_yaml.parse)(readFileSync(path2, "utf8")));
-      log.info(`\uC124\uC815 \uD30C\uC77C \uB85C\uB4DC: ${candidate}`);
+      fromFile = pickFileConfig((0, import_yaml.parse)(fileContent));
     } catch (error51) {
-      log.warn(`\uC124\uC815 \uD30C\uC77C \uD30C\uC2F1 \uC2E4\uD328(${candidate}): ${error51.message} \u2014 \uAE30\uBCF8\uAC12\uC744 \uC0AC\uC6A9\uD55C\uB2E4`);
+      log.warn(`\uC124\uC815 \uD30C\uC77C \uD30C\uC2F1 \uC2E4\uD328: ${error51.message} \u2014 \uAE30\uBCF8\uAC12\uC744 \uC0AC\uC6A9\uD55C\uB2E4`);
     }
-    break;
   }
   return { ...DEFAULT_CONFIG, ...fromFile, ...envOverrides() };
 }
@@ -13035,6 +13029,19 @@ var GitHubClient = class {
       mediaType: { format: "diff" }
     });
     return response.data;
+  }
+  /**
+   * 리포지토리의 파일 하나를 읽는다. 없으면 undefined.
+   * 리포지토리를 체크아웃하지 않고 설정 파일만 가져오는 데 쓴다.
+   */
+  async readFile(path2, ref) {
+    try {
+      const { data } = await this.octokit.rest.repos.getContent({ ...this.repo, path: path2, ref });
+      if (Array.isArray(data) || data.type !== "file" || !data.content) return void 0;
+      return Buffer.from(data.content, "base64").toString("utf8");
+    } catch {
+      return void 0;
+    }
   }
   async createIssueComment(number4, body) {
     const { data } = await this.octokit.rest.issues.createComment({
@@ -30131,44 +30138,6 @@ function dedupeKey(path2, line, title) {
   return `${path2}:${line}:${normalized}`;
 }
 
-// src/server/workspace.ts
-import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { promisify } from "node:util";
-var run = promisify(execFile);
-function authEnv(token) {
-  const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
-  return {
-    ...process.env,
-    GIT_TERMINAL_PROMPT: "0",
-    GIT_CONFIG_COUNT: "1",
-    GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
-    GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${basic}`
-  };
-}
-async function checkoutCommit(owner, repo, sha, token) {
-  const path2 = await mkdtemp(join(tmpdir(), "reviewbot-"));
-  const env = authEnv(token);
-  const dispose = async () => {
-    await rm(path2, { recursive: true, force: true }).catch((error51) => {
-      log.warn(`\uC784\uC2DC \uCCB4\uD06C\uC544\uC6C3 \uC815\uB9AC \uC2E4\uD328(${path2}): ${String(error51)}`);
-    });
-  };
-  try {
-    await run("git", ["init", "--quiet"], { cwd: path2, env });
-    await run("git", ["remote", "add", "origin", `https://github.com/${owner}/${repo}.git`], { cwd: path2, env });
-    await run("git", ["fetch", "--depth", "1", "--quiet", "origin", sha], { cwd: path2, env, maxBuffer: 32 * 1024 * 1024 });
-    await run("git", ["checkout", "--quiet", "FETCH_HEAD"], { cwd: path2, env });
-    log.debug(`\uCCB4\uD06C\uC544\uC6C3 \uC644\uB8CC: ${owner}/${repo}@${sha.slice(0, 8)} \u2192 ${path2}`);
-    return { path: path2, dispose };
-  } catch (error51) {
-    await dispose();
-    throw new Error(`\uB9AC\uD3EC\uC9C0\uD1A0\uB9AC \uCCB4\uD06C\uC544\uC6C3 \uC2E4\uD328(${owner}/${repo}@${sha.slice(0, 8)}): ${error51.message}`);
-  }
-}
-
 // src/server/handler.ts
 var PR_ACTIONS = ["opened", "reopened", "synchronize", "ready_for_review"];
 function accept(deps, eventName, payload) {
@@ -30223,33 +30192,38 @@ async function execute(deps, owner, repo, installationId, trigger) {
     }
   }
   const pr = await github.getPullRequest(trigger.pr);
-  const checkout = await checkoutCommit(owner, repo, pr.headSha, token);
-  try {
-    const config2 = loadConfig(checkout.path);
-    if (!shouldReview(trigger, config2.triggerPrefix, config2.autoReview)) {
-      log.debug(`${slug}#${trigger.pr}: \uB9AC\uBDF0 \uB300\uC0C1\uC774 \uC544\uB2C8\uB2E4`);
-      return;
-    }
-    if (byComment) await github.addReaction(trigger.commentId, "eyes");
-    log.info(`${slug}#${pr.number} "${pr.title}" \uB9AC\uBDF0 \uC2DC\uC791`);
-    const llm = new LlmClient({
-      apiKey: deps.gsmlApiKey,
-      baseUrl: config2.baseUrl,
-      model: config2.model
-    });
-    const runnerDeps = { github, llm, config: config2, workspace: checkout.path };
-    try {
-      const outcome = await runReview(runnerDeps, pr);
-      log.info(`${slug}#${pr.number} \uB9AC\uBDF0 \uC644\uB8CC \u2014 \uC9C0\uC801 ${outcome.findings}\uAC74, \uD310\uC815 ${outcome.verdict}`);
-    } catch (error51) {
-      const message = error51 instanceof Error ? error51.message : String(error51);
-      log.error(`${slug}#${pr.number} \uC2E4\uD328: ${message}`);
-      await github.createIssueComment(trigger.pr, renderError(message)).catch((commentError) => log.warn(`\uC2E4\uD328 \uCF54\uBA58\uD2B8 \uB4F1\uB85D \uC2E4\uD328: ${String(commentError)}`));
-      throw error51;
-    }
-  } finally {
-    await checkout.dispose();
+  const config2 = await loadRepoConfig(github, pr.headSha);
+  if (!shouldReview(trigger, config2.triggerPrefix, config2.autoReview)) {
+    log.debug(`${slug}#${trigger.pr}: \uB9AC\uBDF0 \uB300\uC0C1\uC774 \uC544\uB2C8\uB2E4`);
+    return;
   }
+  if (byComment) await github.addReaction(trigger.commentId, "eyes");
+  log.info(`${slug}#${pr.number} "${pr.title}" \uB9AC\uBDF0 \uC2DC\uC791`);
+  const llm = new LlmClient({
+    apiKey: deps.gsmlApiKey,
+    baseUrl: config2.baseUrl,
+    model: config2.model
+  });
+  const runnerDeps = { github, llm, config: config2 };
+  try {
+    const outcome = await runReview(runnerDeps, pr);
+    log.info(`${slug}#${pr.number} \uB9AC\uBDF0 \uC644\uB8CC \u2014 \uC9C0\uC801 ${outcome.findings}\uAC74, \uD310\uC815 ${outcome.verdict}`);
+  } catch (error51) {
+    const message = error51 instanceof Error ? error51.message : String(error51);
+    log.error(`${slug}#${pr.number} \uC2E4\uD328: ${message}`);
+    await github.createIssueComment(trigger.pr, renderError(message)).catch((commentError) => log.warn(`\uC2E4\uD328 \uCF54\uBA58\uD2B8 \uB4F1\uB85D \uC2E4\uD328: ${String(commentError)}`));
+    throw error51;
+  }
+}
+async function loadRepoConfig(github, ref) {
+  for (const candidate of CONFIG_FILES) {
+    const raw = await github.readFile(candidate, ref);
+    if (raw !== void 0) {
+      log.info(`\uC124\uC815 \uD30C\uC77C \uB85C\uB4DC: ${candidate}`);
+      return loadConfig(raw);
+    }
+  }
+  return loadConfig();
 }
 
 // src/server/queue.ts
@@ -30326,7 +30300,7 @@ function required2(name) {
 }
 function privateKey() {
   const path2 = process.env["GITHUB_APP_PRIVATE_KEY_PATH"];
-  if (path2) return readFileSync2(path2, "utf8");
+  if (path2) return readFileSync(path2, "utf8");
   return required2("GITHUB_APP_PRIVATE_KEY");
 }
 function allowedRepos() {

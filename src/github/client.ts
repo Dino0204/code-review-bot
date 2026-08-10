@@ -67,6 +67,21 @@ export class GitHubClient {
     return response.data as unknown as string
   }
 
+  /**
+   * 리포지토리의 파일 하나를 읽는다. 없으면 undefined.
+   * 리포지토리를 체크아웃하지 않고 설정 파일만 가져오는 데 쓴다.
+   */
+  async readFile(path: string, ref: string): Promise<string | undefined> {
+    try {
+      const { data } = await this.octokit.rest.repos.getContent({ ...this.repo, path, ref })
+      if (Array.isArray(data) || data.type !== 'file' || !data.content) return undefined
+      return Buffer.from(data.content, 'base64').toString('utf8')
+    } catch {
+      // 파일이 없으면 404 — 기본 설정으로 진행한다
+      return undefined
+    }
+  }
+
   async createIssueComment(number: number, body: string): Promise<number> {
     const { data } = await this.octokit.rest.issues.createComment({
       ...this.repo,

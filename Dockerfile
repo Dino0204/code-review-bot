@@ -10,15 +10,12 @@ COPY scripts ./scripts
 COPY src ./src
 RUN npm run build
 
-# 실행 단계 — 번들이 자체 완결이라 node_modules를 들고 갈 필요가 없다
-# 리뷰 대상 커밋을 얕게 받아오는 데 git이 필요하다.
+# 실행 단계 — 번들이 자체 완결이라 node_modules를 들고 갈 필요가 없다.
 #
-# alpine을 쓰면 `apk add git` 으로 받아야 하는데, 알파인 패키지 저장소(dl-cdn)에 닿지 못하는
-# 망이 있다. 실패가 아니라 응답이 없는 형태라 빌드가 통째로 멈춘다. 국내 미러도 마찬가지였다.
-# node:24(데비안)에는 git이 이미 들어 있어 패키지 설치 단계 자체가 사라진다 —
-# 이미지가 커지는 대신 Docker Hub 말고는 아무 데도 의존하지 않는다.
-FROM node:24
-RUN git --version
+# 리포지토리를 체크아웃하지 않으므로 git도 필요 없다. 설정 파일까지 GitHub API로 읽는다.
+# 덕분에 슬림 이미지를 쓸 수 있고, 나가는 트래픽이 api.github.com 하나로 모인다 —
+# github.com 이 막힌 망에서도 리뷰가 돈다.
+FROM node:24-slim
 WORKDIR /app
 
 COPY --from=build /app/dist/server.mjs ./server.mjs

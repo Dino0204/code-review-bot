@@ -113,7 +113,7 @@ customInstructions: |
   - 외부 API 호출에는 타임아웃과 재시도가 있어야 한다.
 ```
 
-설정은 **리포지토리마다** 다르게 줄 수 있다 — 서버가 매 리뷰에서 체크아웃한 리포지토리의
+설정은 **리포지토리마다** 다르게 줄 수 있다 — 서버가 매 리뷰에서 GitHub API로 그 리포지토리의
 `.reviewbot/config.yml` 을 읽기 때문이다.
 
 서버 환경변수로 전체 기본값을 덮어쓸 수도 있다. 이쪽이 설정 파일보다 우선한다.
@@ -208,7 +208,6 @@ src/
     webhook.ts      서명 검증 · 본문 읽기
     handler.ts      이벤트 필터 · 권한 확인 · 리뷰 실행
     queue.ts        동시 실행 1의 작업 큐
-    workspace.ts    리뷰 대상 커밋 얕은 체크아웃
   config.ts         기본값 → .reviewbot/config.yml → 환경변수 병합
   llm.ts            OpenAI 호환 호출 · JSON 추출 · 스키마 검증
   github/

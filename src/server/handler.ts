@@ -1,4 +1,5 @@
-import { loadConfig } from '../config'
+import { CONFIG_FILES, loadConfig } from '../config'
+import type { BotConfig } from '../config'
 import { LlmClient } from '../llm'
 import { GitHubClient } from '../github/client'
 import type { GitHubApp } from '../github/app'
@@ -8,7 +9,6 @@ import { hasReviewTrigger } from '../review/commands'
 import { runReview } from '../review/runner'
 import type { RunnerDeps } from '../review/runner'
 import { renderError } from '../review/render'
-import { checkoutCommit } from './workspace'
 import { log } from '../logger'
 
 export interface HandlerDeps {
@@ -94,7 +94,7 @@ async function execute(
   const github = new GitHubClient(token, { owner, repo })
 
   // 사람이 명시적으로 트리거한 경우에만 권한을 확인한다.
-  // 체크아웃보다 먼저 한다 — 권한 없는 요청에 리포지토리를 받아올 이유가 없다.
+  // 리뷰를 시작하기 전에 한다 — 권한 없는 요청에 API 쿼터를 쓸 이유가 없다.
   const byComment = trigger.kind === 'issue_comment' || trigger.kind === 'review_comment'
   if (byComment) {
     const trusted = isTrustedAssociation(trigger.association) || (await github.hasWriteAccess(trigger.author))
@@ -106,39 +106,46 @@ async function execute(
   }
 
   const pr = await github.getPullRequest(trigger.pr)
-  const checkout = await checkoutCommit(owner, repo, pr.headSha, token)
+  const config = await loadRepoConfig(github, pr.headSha)
+
+  if (!shouldReview(trigger, config.triggerPrefix, config.autoReview)) {
+    log.debug(`${slug}#${trigger.pr}: 리뷰 대상이 아니다`)
+    return
+  }
+
+  if (byComment) await github.addReaction(trigger.commentId, 'eyes')
+
+  log.info(`${slug}#${pr.number} "${pr.title}" 리뷰 시작`)
+
+  const llm = new LlmClient({
+    apiKey: deps.gsmlApiKey,
+    baseUrl: config.baseUrl,
+    model: config.model,
+  })
+  const runnerDeps: RunnerDeps = { github, llm, config }
 
   try {
-    const config = loadConfig(checkout.path)
-    if (!shouldReview(trigger, config.triggerPrefix, config.autoReview)) {
-      log.debug(`${slug}#${trigger.pr}: 리뷰 대상이 아니다`)
-      return
-    }
-
-    if (byComment) await github.addReaction(trigger.commentId, 'eyes')
-
-    log.info(`${slug}#${pr.number} "${pr.title}" 리뷰 시작`)
-
-    const llm = new LlmClient({
-      apiKey: deps.gsmlApiKey,
-      baseUrl: config.baseUrl,
-      model: config.model,
-    })
-    const runnerDeps: RunnerDeps = { github, llm, config, workspace: checkout.path }
-
-    try {
-      const outcome = await runReview(runnerDeps, pr)
-      log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건, 판정 ${outcome.verdict}`)
-    } catch (error) {
-      // 실패 사실을 PR에서 바로 볼 수 있게 남긴다
-      const message = error instanceof Error ? error.message : String(error)
-      log.error(`${slug}#${pr.number} 실패: ${message}`)
-      await github
-        .createIssueComment(trigger.pr, renderError(message))
-        .catch((commentError: unknown) => log.warn(`실패 코멘트 등록 실패: ${String(commentError)}`))
-      throw error
-    }
-  } finally {
-    await checkout.dispose()
+    const outcome = await runReview(runnerDeps, pr)
+    log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건, 판정 ${outcome.verdict}`)
+  } catch (error) {
+    // 실패 사실을 PR에서 바로 볼 수 있게 남긴다
+    const message = error instanceof Error ? error.message : String(error)
+    log.error(`${slug}#${pr.number} 실패: ${message}`)
+    await github
+      .createIssueComment(trigger.pr, renderError(message))
+      .catch((commentError: unknown) => log.warn(`실패 코멘트 등록 실패: ${String(commentError)}`))
+    throw error
   }
+}
+
+/** 리포지토리의 설정 파일을 API로 읽는다. 후보 중 먼저 발견된 하나만 쓴다. */
+async function loadRepoConfig(github: GitHubClient, ref: string): Promise<BotConfig> {
+  for (const candidate of CONFIG_FILES) {
+    const raw = await github.readFile(candidate, ref)
+    if (raw !== undefined) {
+      log.info(`설정 파일 로드: ${candidate}`)
+      return loadConfig(raw)
+    }
+  }
+  return loadConfig()
 }

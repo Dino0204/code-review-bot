@@ -13,7 +13,7 @@ gemini-code-assist를 대체하는 것이 목적이며, 리뷰 대상 코드는 
 | `src/llm.ts`    | OpenAI 호환 HTTP 호출, JSON 추출·스키마 검증     | GitHub·리뷰 로직을 몰라야 한다 |
 | `src/github/`   | Octokit 호출, unified diff 파싱, 이벤트 정규화   | 모델 계층을 몰라야 한다        |
 | `src/review/`   | 프롬프트 조립, 결과 정제, 오케스트레이션         | 위 두 계층을 조합한다          |
-| `src/server/`   | 웹훅 수신·서명 검증·큐·체크아웃. 유일한 진입점   | 위 계층을 조합한다             |
+| `src/server/`   | 웹훅 수신·서명 검증·큐. 유일한 진입점            | 위 계층을 조합한다             |
 
 `src/llm.ts` 와 `src/github` 사이에 직접 import가 생기면 설계가 깨진 것이다.
 

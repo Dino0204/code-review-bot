@@ -16,7 +16,6 @@ export interface RunnerDeps {
   github: GitHubClient
   llm: LlmClient
   config: BotConfig
-  workspace: string
 }
 
 interface GatheredContext {

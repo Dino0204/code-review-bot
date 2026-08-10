@@ -1,5 +1,3 @@
-import { readFileSync, existsSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { log } from './logger'
 
@@ -100,7 +98,7 @@ export const DEFAULT_CONFIG: BotConfig = {
 }
 
 /** 리포지토리 루트의 설정 파일 후보 (먼저 발견된 것 하나만 사용) */
-const CONFIG_FILES = ['.reviewbot/config.yml', '.reviewbot/config.yaml', '.reviewbot.yml', '.reviewbot.yaml']
+export const CONFIG_FILES = ['.reviewbot/config.yml', '.reviewbot/config.yaml', '.reviewbot.yml', '.reviewbot.yaml']
 
 function coerceStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined
@@ -164,20 +162,18 @@ function envOverrides(): Partial<BotConfig> {
 }
 
 /**
- * 설정 병합 순서: 기본값 → 리포지토리 설정 파일 → 환경변수(액션 input)
+ * 설정 병합 순서: 기본값 → 리포지토리 설정 파일 → 환경변수
+ *
+ * 설정 파일 내용은 호출부가 GitHub API로 읽어 넘긴다 — 리포지토리를 체크아웃하지 않는다.
  */
-export function loadConfig(workspace: string): BotConfig {
+export function loadConfig(fileContent?: string): BotConfig {
   let fromFile: Partial<BotConfig> = {}
-  for (const candidate of CONFIG_FILES) {
-    const path = resolve(workspace, candidate)
-    if (!existsSync(path)) continue
+  if (fileContent !== undefined) {
     try {
-      fromFile = pickFileConfig(parseYaml(readFileSync(path, 'utf8')))
-      log.info(`설정 파일 로드: ${candidate}`)
+      fromFile = pickFileConfig(parseYaml(fileContent))
     } catch (error) {
-      log.warn(`설정 파일 파싱 실패(${candidate}): ${(error as Error).message} — 기본값을 사용한다`)
+      log.warn(`설정 파일 파싱 실패: ${(error as Error).message} — 기본값을 사용한다`)
     }
-    break
   }
 
   return { ...DEFAULT_CONFIG, ...fromFile, ...envOverrides() }
