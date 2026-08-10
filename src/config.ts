@@ -9,8 +9,6 @@ export type Severity = (typeof SEVERITIES)[number]
 export interface BotConfig {
   /** 모델 ID */
   model: string
-  /** 기본 모델이 용량 부족으로 막힐 때 순서대로 시도할 대체 모델 */
-  fallbackModels: string[]
   /** OpenAI 호환 API base URL (버전 경로까지 포함) */
   baseUrl: string
   /** 리뷰 코멘트 언어 */
@@ -24,8 +22,6 @@ export interface BotConfig {
   maxFiles: number
   /** 파일 하나를 컨텍스트에 넣을 때의 최대 문자 수 */
   maxFileChars: number
-  /** import 그래프/심볼 검색으로 끌어올 관련 파일 최대 개수 */
-  maxRelatedFiles: number
 
   /** 리뷰에서 제외할 glob */
   exclude: string[]
@@ -44,12 +40,6 @@ export interface BotConfig {
   /** 코멘트 트리거 접두사 */
   triggerPrefix: string
 
-  /** 사람이 관리하는 코드베이스 컨텍스트 파일 */
-  contextFile: string
-  /** 봇이 축적하는 학습 메모리 파일 */
-  memoryFile: string
-  /** /learn 실행 시 메모리 파일을 기본 브랜치에 커밋할지 */
-  memoryAutoCommit: boolean
 
   /** 리포지토리별 추가 리뷰 지침 */
   customInstructions: string
@@ -59,7 +49,6 @@ export const DEFAULT_CONFIG: BotConfig = {
   // GSML 게이트웨이는 모델 하나만 서빙한다. 모델 ID는 /v1/models 로 확인한다.
   model: 'darwin-35b-q4_k_m.gguf',
   // 단일 모델이라 넘어갈 곳이 없다. 여러 모델을 서빙하는 게이트웨이로 바꾸면 여기에 채운다.
-  fallbackModels: [],
   baseUrl: 'http://ssh.gsmsv.site:26145/v1',
   language: 'ko',
   temperature: 0.2,
@@ -72,7 +61,6 @@ export const DEFAULT_CONFIG: BotConfig = {
   maxPromptChars: 140_000,
   maxFiles: 40,
   maxFileChars: 24_000,
-  maxRelatedFiles: 12,
 
   exclude: [
     '**/node_modules/**',
@@ -107,9 +95,6 @@ export const DEFAULT_CONFIG: BotConfig = {
 
   triggerPrefix: '/review',
 
-  contextFile: '.reviewbot/context.md',
-  memoryFile: '.reviewbot/memory.md',
-  memoryAutoCommit: false,
 
   customInstructions: '',
 }
@@ -127,7 +112,7 @@ function pickFileConfig(raw: unknown): Partial<BotConfig> {
   const r = raw as Record<string, unknown>
   const out: Partial<BotConfig> = {}
 
-  const strings = ['model', 'baseUrl', 'language', 'triggerPrefix', 'contextFile', 'memoryFile', 'customInstructions'] as const
+  const strings = ['model', 'baseUrl', 'language', 'triggerPrefix', 'customInstructions'] as const
   for (const key of strings) {
     if (typeof r[key] === 'string') out[key] = r[key] as string
   }
@@ -138,7 +123,6 @@ function pickFileConfig(raw: unknown): Partial<BotConfig> {
     'maxPromptChars',
     'maxFiles',
     'maxFileChars',
-    'maxRelatedFiles',
     'maxInlineComments',
     'minConfidence',
   ] as const
@@ -146,17 +130,12 @@ function pickFileConfig(raw: unknown): Partial<BotConfig> {
     if (typeof r[key] === 'number' && Number.isFinite(r[key])) out[key] = r[key] as number
   }
 
-  const booleans = ['autoReview', 'memoryAutoCommit'] as const
-  for (const key of booleans) {
-    if (typeof r[key] === 'boolean') out[key] = r[key] as boolean
-  }
+  if (typeof r['autoReview'] === 'boolean') out.autoReview = r['autoReview']
 
   const exclude = coerceStringArray(r['exclude'])
   if (exclude) out.exclude = [...DEFAULT_CONFIG.exclude, ...exclude]
   const include = coerceStringArray(r['include'])
   if (include) out.include = include
-  const fallbackModels = coerceStringArray(r['fallbackModels'])
-  if (fallbackModels) out.fallbackModels = fallbackModels
 
   if (typeof r['minSeverity'] === 'string' && (SEVERITIES as readonly string[]).includes(r['minSeverity'])) {
     out.minSeverity = r['minSeverity'] as Severity
@@ -169,12 +148,6 @@ function envOverrides(): Partial<BotConfig> {
   const env = process.env
   const out: Partial<BotConfig> = {}
   if (env['REVIEWBOT_MODEL']) out.model = env['REVIEWBOT_MODEL']
-  if (env['REVIEWBOT_FALLBACK_MODELS'] !== undefined) {
-    out.fallbackModels = env['REVIEWBOT_FALLBACK_MODELS']
-      .split(',')
-      .map((model) => model.trim())
-      .filter(Boolean)
-  }
   if (env['REVIEWBOT_BASE_URL']) out.baseUrl = env['REVIEWBOT_BASE_URL']
   if (env['REVIEWBOT_LANGUAGE']) out.language = env['REVIEWBOT_LANGUAGE']
   if (env['REVIEWBOT_TRIGGER_PREFIX']) out.triggerPrefix = env['REVIEWBOT_TRIGGER_PREFIX']

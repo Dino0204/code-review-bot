@@ -40,7 +40,6 @@ function allowedRepos(): string[] {
 function main(): void {
   const webhookSecret = required('GITHUB_WEBHOOK_SECRET')
   const gsmlApiKey = required('GSML_API_KEY')
-  log.mask(gsmlApiKey)
 
   const deps: HandlerDeps = {
     app: new GitHubApp({ appId: required('GITHUB_APP_ID'), privateKey: privateKey() }),

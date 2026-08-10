@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs'
-
 export interface RepoRef {
   owner: string
   repo: string
@@ -37,7 +35,6 @@ export type Trigger =
       inReplyToId?: number
     }
   | { kind: 'pull_request'; pr: number; action: string; author: string; draft: boolean }
-  | { kind: 'manual'; pr: number; body: string; author: string }
 
 export interface RawEvent {
   action?: string
@@ -61,21 +58,9 @@ export interface RawEvent {
     draft?: boolean
     user?: { login?: string }
   }
-  inputs?: Record<string, string>
   repository?: { owner?: { login?: string }; name?: string; full_name?: string; default_branch?: string }
   /** GitHub App 웹훅에만 실려 온다 — 설치 토큰을 발급할 때 쓴다 */
   installation?: { id?: number }
-}
-
-export function readRepoRef(): RepoRef {
-  const slug = process.env['GITHUB_REPOSITORY']
-  if (slug) {
-    const [owner, repo] = slug.split('/')
-    if (owner && repo) return { owner, repo }
-  }
-  const ref = repoRefFrom(readEventPayload())
-  if (ref) return ref
-  throw new Error('GITHUB_REPOSITORY를 확인할 수 없다')
 }
 
 /** 이벤트 페이로드에서 리포지토리를 읽는다 — 웹훅에는 항상 실려 온다 */
@@ -85,29 +70,9 @@ export function repoRefFrom(event: RawEvent | undefined): RepoRef | undefined {
   return owner && repo ? { owner, repo } : undefined
 }
 
-export function readEventPayload(): RawEvent | undefined {
-  const path = process.env['GITHUB_EVENT_PATH']
-  if (!path) return undefined
-  try {
-    return JSON.parse(readFileSync(path, 'utf8')) as RawEvent
-  } catch {
-    return undefined
-  }
-}
-
 /**
- * GitHub Actions 환경에서 트리거를 읽는다.
- * 대상 PR을 찾을 수 없으면 undefined — 워크플로가 조용히 종료된다.
- */
-export function resolveTrigger(): Trigger | undefined {
-  return parseTrigger(process.env['GITHUB_EVENT_NAME'] ?? '', readEventPayload())
-}
-
-/**
- * 이벤트를 봇이 다룰 수 있는 트리거로 정규화한다.
- *
- * Actions가 GITHUB_EVENT_PATH에 떨구는 JSON과 App 웹훅 본문은 같은 형태다.
- * 그래서 이 함수 하나로 두 진입점을 모두 처리한다.
+ * 웹훅 이벤트를 봇이 다룰 수 있는 트리거로 정규화한다.
+ * 다룰 수 없는 이벤트면 undefined — 서버가 조용히 무시한다.
  */
 export function parseTrigger(eventName: string, event: RawEvent | undefined): Trigger | undefined {
   if (!event) return undefined
@@ -155,18 +120,6 @@ export function parseTrigger(eventName: string, event: RawEvent | undefined): Tr
       action: event.action ?? 'unknown',
       author: event.pull_request?.user?.login ?? 'unknown',
       draft: Boolean(event.pull_request?.draft),
-    }
-  }
-
-  if (eventName === 'workflow_dispatch') {
-    const raw = event.inputs?.['pr'] ?? process.env['REVIEWBOT_PR']
-    const pr = Number(raw)
-    if (!Number.isInteger(pr) || pr <= 0) return undefined
-    return {
-      kind: 'manual',
-      pr,
-      body: event.inputs?.['command'] ?? '/review',
-      author: process.env['GITHUB_ACTOR'] ?? 'unknown',
     }
   }
 

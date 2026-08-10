@@ -23,12 +23,8 @@ const common = {
   banner: { js: banner },
 }
 
-// index: GitHub Actions 진입점 (커밋된 번들이 그대로 실행된다)
 // server: 웹훅 서버 진입점 (도커 이미지 안에서 실행된다)
-const targets = [
-  { entryPoints: ['src/index.ts'], outfile: 'dist/index.mjs' },
-  { entryPoints: ['src/server/index.ts'], outfile: 'dist/server.mjs' },
-]
+const targets = [{ entryPoints: ['src/server/index.ts'], outfile: 'dist/server.mjs' }]
 
 for (const target of targets) {
   await build({ ...common, ...target })

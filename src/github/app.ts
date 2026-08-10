@@ -1,6 +1,5 @@
 import { createSign } from 'node:crypto'
 import { describeNetworkError } from '../net'
-import { log } from '../logger'
 
 /**
  * GitHub App 인증.
@@ -72,7 +71,6 @@ export class GitHubApp {
 
     const expiresAt = data.expires_at ? Date.parse(data.expires_at) : Date.now() + 3600_000
     this.cache.set(installationId, { token: data.token, expiresAt })
-    log.mask(data.token)
     return data.token
   }
 

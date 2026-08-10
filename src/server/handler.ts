@@ -1,12 +1,12 @@
 import { loadConfig } from '../config'
-import { LlmClient } from '../llm/client'
+import { LlmClient } from '../llm'
 import { GitHubClient } from '../github/client'
 import type { GitHubApp } from '../github/app'
 import { isBotActor, isTrustedAssociation, parseTrigger, repoRefFrom } from '../github/event'
 import type { RawEvent, Trigger } from '../github/event'
 import { helpText, parseCommand } from '../review/commands'
 import type { Command } from '../review/commands'
-import { runAsk, runLearn, runReview, runSummary } from '../review/runner'
+import { runAsk, runReview, runSummary } from '../review/runner'
 import type { RunnerDeps } from '../review/runner'
 import { renderError } from '../review/render'
 import { checkoutCommit } from './workspace'
@@ -77,11 +77,9 @@ function resolveCommand(trigger: Trigger, triggerPrefix: string, autoReview: boo
     case 'issue_comment':
     case 'review_comment':
       return parseCommand(trigger.body, triggerPrefix)
-    case 'manual':
-      return parseCommand(trigger.body, triggerPrefix) ?? { name: 'review', focus: '', full: false }
     case 'pull_request':
       if (!autoReview) return undefined
-      return { name: 'review', focus: '', full: false }
+      return { name: 'review', focus: '' }
   }
 }
 
@@ -132,14 +130,13 @@ async function execute(
       apiKey: deps.gsmlApiKey,
       baseUrl: config.baseUrl,
       model: config.model,
-      fallbackModels: config.fallbackModels,
     })
     const runnerDeps: RunnerDeps = { github, llm, config, workspace: checkout.path }
 
     try {
       switch (command.name) {
         case 'review': {
-          const outcome = await runReview(runnerDeps, pr, { focus: command.focus, full: command.full })
+          const outcome = await runReview(runnerDeps, pr, { focus: command.focus })
           log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건, 판정 ${outcome.verdict}`)
           break
         }
@@ -149,16 +146,13 @@ async function execute(
         case 'summary':
           await runSummary(runnerDeps, pr)
           break
-        case 'learn':
-          await runLearn(runnerDeps, pr)
-          break
       }
     } catch (error) {
       // 실패 사실을 PR에서 바로 볼 수 있게 남긴다
       const message = error instanceof Error ? error.message : String(error)
       log.error(`${slug}#${pr.number} 실패: ${message}`)
       await github
-        .createIssueComment(trigger.pr, renderError(message, undefined))
+        .createIssueComment(trigger.pr, renderError(message))
         .catch((commentError: unknown) => log.warn(`실패 코멘트 등록 실패: ${String(commentError)}`))
       throw error
     }

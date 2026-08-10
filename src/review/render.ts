@@ -1,13 +1,14 @@
-import { BOT_MARKER } from '../context/memory'
 import type { BotConfig } from '../config'
 import type { Finding, ReviewResult } from './schema'
 import { SEVERITY_LABEL, VERDICT_LABEL } from './schema'
+
+/** 봇이 남긴 코멘트임을 표시하는 마커 */
+export const BOT_MARKER = '<!-- glm-code-review-bot -->'
 
 export interface ReviewMeta {
   model: string
   reviewedFiles: number
   skippedFiles: number
-  runUrl?: string
   promptTokens?: number
   completionTokens?: number
   chunks: number
@@ -140,7 +141,6 @@ export function renderReviewSummary(
     `파일 ${meta.reviewedFiles}개 리뷰${meta.skippedFiles ? ` (${meta.skippedFiles}개 제외)` : ''}`,
     meta.chunks > 1 ? `${meta.chunks}개 청크로 분할` : '',
     meta.promptTokens !== undefined ? `토큰 ${meta.promptTokens.toLocaleString()} in / ${(meta.completionTokens ?? 0).toLocaleString()} out` : '',
-    meta.runUrl ? `[실행 로그](${meta.runUrl})` : '',
   ]
     .filter(Boolean)
     .join(' · ')
@@ -150,36 +150,16 @@ export function renderReviewSummary(
   return parts.join('\n')
 }
 
-/**
- * 봇이 이전에 남긴 인라인 코멘트에서 지적 제목을 되뽑는다.
- * `**🟠 major · bug** — 제목` 형식이 아니면 첫 줄을 그대로 쓴다.
- */
-export function extractFindingTitle(body: string): string {
-  const withoutMarker = body.replace(BOT_MARKER, '').trim()
-  const firstLine = withoutMarker.split('\n').find((line) => line.trim()) ?? ''
-  const match = /\*\*.*?\*\*\s*—\s*(.+)$/.exec(firstLine.trim())
-  return (match?.[1] ?? firstLine).trim()
-}
-
-export function renderPlainComment(title: string, body: string, meta?: { model: string; runUrl?: string }): string {
+export function renderPlainComment(title: string, body: string, meta?: { model: string }): string {
   const parts = [BOT_MARKER, `## ${title}`, '', body.trim()]
   if (meta) {
-    const footer = [`모델 \`${meta.model}\``, meta.runUrl ? `[실행 로그](${meta.runUrl})` : ''].filter(Boolean).join(' · ')
-    parts.push('', '---', `<sub>${footer}</sub>`)
+    parts.push('', '---', `<sub>모델 \`${meta.model}\`</sub>`)
   }
   return parts.join('\n')
 }
 
-export function renderError(message: string, runUrl?: string): string {
-  return [
-    BOT_MARKER,
-    '## ⚠️ 코드 리뷰 실패',
-    '',
-    '```',
-    message.slice(0, 1500),
-    '```',
-    runUrl ? `\n[실행 로그 보기](${runUrl})` : '',
-  ].join('\n')
+export function renderError(message: string): string {
+  return [BOT_MARKER, '## ⚠️ 코드 리뷰 실패', '', '```', message.slice(0, 1500), '```'].join('\n')
 }
 
 function countBySeverity(findings: Finding[]): Record<Finding['severity'], number> {

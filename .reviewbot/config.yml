@@ -1,40 +1,22 @@
-# 코드 리뷰 봇 설정 — 리뷰 대상 리포지토리의 루트에 둔다.
-# 모든 항목은 선택이며, 지정하지 않으면 기본값을 쓴다.
-
-# --- 모델 ---
-model: darwin-35b-q4_k_m.gguf # GSML이 서빙하는 모델. /v1/models 로 확인한다
-# 기본 모델이 막힐 때 순서대로 시도할 대체 모델. GSML은 단일 모델이라 비워 둔다.
-fallbackModels: []
+model: darwin-35b-q4_k_m.gguf
 language: ko
 temperature: 0.2
-maxOutputTokens: 16384 # 이 모델은 추론을 끌 수 없고, 추론 토큰도 여기서 함께 나간다
+maxOutputTokens: 16384
 
-# --- 리뷰 범위 ---
-maxFiles: 40 # 변경량이 큰 파일부터 이 개수까지만 리뷰
-maxFileChars: 24000 # 파일 하나를 컨텍스트에 실을 때의 상한
-maxPromptChars: 140000 # 한 번의 호출에 실어보낼 프롬프트 상한 (131K 컨텍스트를 출력과 나눠 쓴다)
-maxRelatedFiles: 12 # import 그래프/호출부에서 끌어올 관련 파일 수
+maxFiles: 40
+maxFileChars: 24000
+maxPromptChars: 140000
 
 exclude:
-  - '**/*.generated.ts'
-  - 'docs/**'
-# include를 지정하면 여기 매칭되는 파일만 리뷰한다 (기본: 전체)
-# include:
-#   - 'src/**'
+  - "**/*.generated.ts"
+  - "docs/**"
 
-# --- 코멘트 정책 ---
-autoReview: true # PR이 열리거나 갱신되면 자동 리뷰
-minSeverity: minor # critical | major | minor | nit
-minConfidence: 0.5 # 이 확신도 미만의 지적은 버린다
+autoReview: true
+minSeverity: minor
+minConfidence: 0.5
 maxInlineComments: 25
-triggerPrefix: '/review'
+triggerPrefix: "/review"
 
-# --- 코드베이스 맥락 ---
-contextFile: .reviewbot/context.md # 사람이 관리하는 아키텍처/규약 문서
-memoryFile: .reviewbot/memory.md # `/learn` 이 갱신하는 봇 메모리
-memoryAutoCommit: false # true면 `/learn` 이 기본 브랜치에 직접 커밋 (contents: write 권한 필요)
-
-# --- 리포지토리별 추가 지침 ---
 customInstructions: |
   - 이 리포지토리는 TypeScript strict 모드다. any 사용을 지적하라.
   - 외부 API 호출에는 반드시 타임아웃과 재시도가 있어야 한다.
