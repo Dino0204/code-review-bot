@@ -13,23 +13,11 @@ test('관심 영역을 붙인 리뷰', () => {
   })
 })
 
-test('ask는 축약형과 서브커맨드 모두 지원한다', () => {
-  assert.deepEqual(parseCommand('/ask 이 락이 필요한가?'), { name: 'ask', question: '이 락이 필요한가?' })
-  assert.deepEqual(parseCommand('/review ask 이 락이 필요한가?'), { name: 'ask', question: '이 락이 필요한가?' })
-})
-
-test('질문이 비면 도움말로 떨어진다', () => {
-  assert.deepEqual(parseCommand('/ask'), { name: 'help' })
-})
-
-test('summary / help', () => {
-  assert.deepEqual(parseCommand('/summary'), { name: 'summary' })
+test('help는 별도 명령이고, 그 밖의 말은 전부 관심 영역이다', () => {
   assert.deepEqual(parseCommand('/review help'), { name: 'help' })
-})
-
-test('없어진 서브커맨드는 관심 영역으로 취급된다', () => {
-  assert.deepEqual(parseCommand('/review learn'), { name: 'review', focus: 'learn' })
-  assert.deepEqual(parseCommand('/review full'), { name: 'review', focus: 'full' })
+  assert.deepEqual(parseCommand('/review --help'), { name: 'help' })
+  assert.deepEqual(parseCommand('/review summary'), { name: 'review', focus: 'summary' })
+  assert.deepEqual(parseCommand('/review ask 이게 뭐야'), { name: 'review', focus: 'ask 이게 뭐야' })
 })
 
 test('여러 줄 코멘트에서도 명령 줄을 찾는다', () => {

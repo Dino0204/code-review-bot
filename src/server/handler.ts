@@ -6,7 +6,7 @@ import { isBotActor, isTrustedAssociation, parseTrigger, repoRefFrom } from '../
 import type { RawEvent, Trigger } from '../github/event'
 import { helpText, parseCommand } from '../review/commands'
 import type { Command } from '../review/commands'
-import { runAsk, runReview, runSummary } from '../review/runner'
+import { runReview } from '../review/runner'
 import type { RunnerDeps } from '../review/runner'
 import { renderError } from '../review/render'
 import { checkoutCommit } from './workspace'
@@ -134,19 +134,8 @@ async function execute(
     const runnerDeps: RunnerDeps = { github, llm, config, workspace: checkout.path }
 
     try {
-      switch (command.name) {
-        case 'review': {
-          const outcome = await runReview(runnerDeps, pr, { focus: command.focus })
-          log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건, 판정 ${outcome.verdict}`)
-          break
-        }
-        case 'ask':
-          await runAsk(runnerDeps, pr, command.question)
-          break
-        case 'summary':
-          await runSummary(runnerDeps, pr)
-          break
-      }
+      const outcome = await runReview(runnerDeps, pr, { focus: command.focus })
+      log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건, 판정 ${outcome.verdict}`)
     } catch (error) {
       // 실패 사실을 PR에서 바로 볼 수 있게 남긴다
       const message = error instanceof Error ? error.message : String(error)

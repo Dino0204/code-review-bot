@@ -13181,36 +13181,16 @@ function isBotActor(login) {
 }
 
 // src/review/commands.ts
-var ALIASES = ["/ask", "/summary"];
 function parseCommand(body, triggerPrefix = "/review") {
   const lines = body.split("\n").map((line) => line.trim());
   for (const line of lines) {
     if (!line.startsWith("/")) continue;
-    for (const alias of ALIASES) {
-      if (line === alias || line.startsWith(`${alias} `)) {
-        const rest2 = line.slice(alias.length).trim();
-        if (alias === "/ask") return rest2 ? { name: "ask", question: rest2 } : { name: "help" };
-        return { name: "summary" };
-      }
-    }
     if (line !== triggerPrefix && !line.startsWith(`${triggerPrefix} `)) continue;
     const rest = line.slice(triggerPrefix.length).trim();
     if (!rest) return { name: "review", focus: "" };
-    const [first, ...restWords] = rest.split(/\s+/);
-    const sub = (first ?? "").toLowerCase();
-    const remainder = restWords.join(" ");
-    switch (sub) {
-      case "help":
-      case "-h":
-      case "--help":
-        return { name: "help" };
-      case "summary":
-        return { name: "summary" };
-      case "ask":
-        return remainder ? { name: "ask", question: remainder } : { name: "help" };
-      default:
-        return { name: "review", focus: rest };
-    }
+    const sub = (rest.split(/\s+/)[0] ?? "").toLowerCase();
+    if (sub === "help" || sub === "-h" || sub === "--help") return { name: "help" };
+    return { name: "review", focus: rest };
   }
   return void 0;
 }
@@ -13222,11 +13202,9 @@ function helpText(triggerPrefix, model) {
     "| --- | --- |",
     `| \`${triggerPrefix}\` | \uBCC0\uACBD\uB41C diff\uB97C \uB9AC\uBDF0\uD55C\uB2E4 |`,
     `| \`${triggerPrefix} security\` | \uD2B9\uC815 \uAD00\uC810(security, performance, \uB3D9\uC2DC\uC131 \u2026)\uC5D0 \uC9D1\uC911\uD574 \uB9AC\uBDF0\uD55C\uB2E4 |`,
-    `| \`${triggerPrefix} ask <\uC9C8\uBB38>\` \uB610\uB294 \`/ask <\uC9C8\uBB38>\` | PR \uBCC0\uACBD \uC0AC\uD56D\uC744 \uADFC\uAC70\uB85C \uB2F5\uD55C\uB2E4 |`,
-    `| \`${triggerPrefix} summary\` \uB610\uB294 \`/summary\` | PR \uBCC0\uACBD \uC0AC\uD56D\uC744 \uC694\uC57D\uD55C\uB2E4 |`,
     `| \`${triggerPrefix} help\` | \uC774 \uB3C4\uC6C0\uB9D0 |`,
     "",
-    "\uC124\uC815\uC740 \uB9AC\uD3EC\uC9C0\uD1A0\uB9AC\uC758 `.reviewbot/config.yml` \uC5D0\uC11C \uC77D\uB294\uB2E4."
+    "PR\uC774 \uC5F4\uB9AC\uAC70\uB098 \uAC31\uC2E0\uB418\uBA74 \uC790\uB3D9\uC73C\uB85C \uB9AC\uBDF0\uD55C\uB2E4. \uC124\uC815\uC740 \uB9AC\uD3EC\uC9C0\uD1A0\uB9AC\uC758 `.reviewbot/config.yml` \uC5D0\uC11C \uC77D\uB294\uB2E4."
   ].join("\n");
 }
 
@@ -29913,46 +29891,6 @@ ${instructions}` : "",
     { role: "user", content: userPrompt }
   ];
 }
-function buildAskMessages(context, question) {
-  return [
-    {
-      role: "system",
-      content: [
-        "\uB108\uB294 \uC774 \uB9AC\uD3EC\uC9C0\uD1A0\uB9AC\uB97C \uC798 \uC544\uB294 \uC2DC\uB2C8\uC5B4 \uC5D4\uC9C0\uB2C8\uC5B4\uB2E4. PR \uBCC0\uACBD \uC0AC\uD56D\uC744 \uADFC\uAC70\uB85C \uC9C8\uBB38\uC5D0 \uB2F5\uD55C\uB2E4.",
-        "- \uC8FC\uC5B4\uC9C4 \uCF54\uB4DC\uC5D0\uC11C \uD655\uC778\uB418\uB294 \uC0AC\uC2E4\uB9CC \uADFC\uAC70\uB85C \uB2F5\uD55C\uB2E4. \uBAA8\uB974\uBA74 \uBAA8\uB978\uB2E4\uACE0 \uB9D0\uD55C\uB2E4.",
-        "- \uD30C\uC77C\uACFC \uC904 \uBC88\uD638\uB97C \uC778\uC6A9\uD574 \uADFC\uAC70\uB97C \uBC1D\uD78C\uB2E4.",
-        "- \uB9C8\uD06C\uB2E4\uC6B4\uC73C\uB85C \uAC04\uACB0\uD558\uAC8C \uB2F5\uD55C\uB2E4. JSON\uC744 \uC4F0\uC9C0 \uC54A\uB294\uB2E4.",
-        `- ${languageName(context.config.language)}\uB85C \uB2F5\uD55C\uB2E4.`
-      ].join("\n")
-    },
-    {
-      role: "user",
-      content: ["## Pull Request", prMeta(context.pr), "", "## \uBCC0\uACBD \uC0AC\uD56D (diff)", renderDiff(context), "", "## \uC9C8\uBB38", question].join("\n")
-    }
-  ];
-}
-function buildSummaryMessages(context) {
-  return [
-    {
-      role: "system",
-      content: [
-        "\uB108\uB294 \uC2DC\uB2C8\uC5B4 \uC5D4\uC9C0\uB2C8\uC5B4\uB2E4. Pull Request\uC758 \uBCC0\uACBD \uB0B4\uC6A9\uC744 \uB9AC\uBDF0\uC5B4\uAC00 \uBE60\uB974\uAC8C \uD30C\uC545\uD560 \uC218 \uC788\uB3C4\uB85D \uC694\uC57D\uD55C\uB2E4.",
-        "",
-        "\uB2E4\uC74C \uB9C8\uD06C\uB2E4\uC6B4 \uAD6C\uC870\uB85C \uC791\uC131\uD55C\uB2E4:",
-        "### \uBCC0\uACBD \uC694\uC57D  \u2014 \uC774 PR\uC774 \uBB34\uC5C7\uC744 \uC65C \uBC14\uAFB8\uB294\uC9C0 3~5\uC904",
-        "### \uC8FC\uC694 \uBCC0\uACBD  \u2014 \uD30C\uC77C/\uBAA8\uB4C8 \uB2E8\uC704 \uBD88\uB9BF, \uAC01 \uC904\uC5D0 \uBB34\uC5C7\uC774 \uBC14\uB00C\uC5C8\uB294\uC9C0",
-        "### \uB9AC\uBDF0 \uD3EC\uC778\uD2B8 \u2014 \uB9AC\uBDF0\uC5B4\uAC00 \uD2B9\uD788 \uBD10\uC57C \uD560 \uC9C0\uC810 2~4\uAC1C",
-        "",
-        "\uCD94\uCE21\uC744 \uC4F0\uC9C0 \uC54A\uB294\uB2E4. diff\uC5D0\uC11C \uD655\uC778\uB418\uB294 \uB0B4\uC6A9\uB9CC \uC4F4\uB2E4.",
-        `${languageName(context.config.language)}\uB85C \uC791\uC131\uD55C\uB2E4.`
-      ].join("\n")
-    },
-    {
-      role: "user",
-      content: ["## Pull Request", prMeta(context.pr), "", "## \uBCC0\uACBD \uC0AC\uD56D (diff)", renderDiff(context)].join("\n")
-    }
-  ];
-}
 
 // src/review/render.ts
 var BOT_MARKER = "<!-- glm-code-review-bot -->";
@@ -30153,29 +30091,6 @@ async function runReview(deps, pr, options = {}) {
     verdict: merged.verdict
   };
 }
-async function runAsk(deps, pr, question) {
-  const { github, llm, config: config2 } = deps;
-  const { context } = await gatherContext(deps, pr);
-  const answer = await llm.chat(buildAskMessages(context, question), {
-    temperature: 0.3,
-    maxTokens: config2.maxOutputTokens
-  });
-  await github.createIssueComment(
-    pr.number,
-    renderPlainComment(`\u{1F916} \uB2F5\uBCC0`, `> ${question.replace(/\n/g, "\n> ")}
-
-${answer}`, { model: llm.model })
-  );
-}
-async function runSummary(deps, pr) {
-  const { github, llm, config: config2 } = deps;
-  const { context } = await gatherContext(deps, pr);
-  const summary = await llm.chat(buildSummaryMessages(context), {
-    temperature: 0.2,
-    maxTokens: config2.maxOutputTokens
-  });
-  await github.createIssueComment(pr.number, renderPlainComment("\u{1F916} PR \uC694\uC57D", summary, { model: llm.model }));
-}
 function mergeResults(results) {
   if (results.length === 1) return results[0];
   const verdictRank = { request_changes: 0, comment: 1, approve: 2 };
@@ -30358,19 +30273,8 @@ async function execute(deps, owner, repo, installationId, trigger) {
     });
     const runnerDeps = { github, llm, config: config2, workspace: checkout.path };
     try {
-      switch (command.name) {
-        case "review": {
-          const outcome = await runReview(runnerDeps, pr, { focus: command.focus });
-          log.info(`${slug}#${pr.number} \uB9AC\uBDF0 \uC644\uB8CC \u2014 \uC9C0\uC801 ${outcome.findings}\uAC74, \uD310\uC815 ${outcome.verdict}`);
-          break;
-        }
-        case "ask":
-          await runAsk(runnerDeps, pr, command.question);
-          break;
-        case "summary":
-          await runSummary(runnerDeps, pr);
-          break;
-      }
+      const outcome = await runReview(runnerDeps, pr, { focus: command.focus });
+      log.info(`${slug}#${pr.number} \uB9AC\uBDF0 \uC644\uB8CC \u2014 \uC9C0\uC801 ${outcome.findings}\uAC74, \uD310\uC815 ${outcome.verdict}`);
     } catch (error51) {
       const message = error51 instanceof Error ? error51.message : String(error51);
       log.error(`${slug}#${pr.number} \uC2E4\uD328: ${message}`);

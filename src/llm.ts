@@ -62,7 +62,7 @@ export class LlmClient {
     this.timeoutMs = options.timeoutMs ?? 600_000
   }
 
-  async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<string> {
+  private async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<string> {
     const body: Record<string, unknown> = {
       model: this.model,
       messages,

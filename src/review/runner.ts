@@ -5,7 +5,7 @@ import type { LlmClient } from '../llm'
 import type { GitHubClient, InlineComment, PullRequestInfo } from '../github/client'
 import type { DiffFile } from '../github/diff'
 import { parseUnifiedDiff, renderFileDiff, snapToCommentableLine } from '../github/diff'
-import { buildAskMessages, buildReviewMessages, buildSummaryMessages } from './prompt'
+import { buildReviewMessages } from './prompt'
 import type { ReviewContext } from './prompt'
 import { reviewResultSchema, normalizeCategory } from './schema'
 import type { Finding, ReviewResult } from './schema'
@@ -156,29 +156,6 @@ export async function runReview(
     inline: posted,
     verdict: merged.verdict,
   }
-}
-
-export async function runAsk(deps: RunnerDeps, pr: PullRequestInfo, question: string): Promise<void> {
-  const { github, llm, config } = deps
-  const { context } = await gatherContext(deps, pr)
-  const answer = await llm.chat(buildAskMessages(context, question), {
-    temperature: 0.3,
-    maxTokens: config.maxOutputTokens,
-  })
-  await github.createIssueComment(
-    pr.number,
-    renderPlainComment(`🤖 답변`, `> ${question.replace(/\n/g, '\n> ')}\n\n${answer}`, { model: llm.model }),
-  )
-}
-
-export async function runSummary(deps: RunnerDeps, pr: PullRequestInfo): Promise<void> {
-  const { github, llm, config } = deps
-  const { context } = await gatherContext(deps, pr)
-  const summary = await llm.chat(buildSummaryMessages(context), {
-    temperature: 0.2,
-    maxTokens: config.maxOutputTokens,
-  })
-  await github.createIssueComment(pr.number, renderPlainComment('🤖 PR 요약', summary, { model: llm.model }))
 }
 
 function mergeResults(results: ReviewResult[]): ReviewResult {

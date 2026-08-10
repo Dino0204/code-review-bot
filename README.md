@@ -93,11 +93,9 @@ PR을 열면 자동으로 리뷰가 달리고, 언제든 코멘트로 다시 부
 | --- | --- |
 | `/review` | 변경된 diff를 리뷰한다 |
 | `/review security` | 특정 관점(security, performance, 동시성 …)을 우선해서 리뷰한다 |
-| `/ask <질문>` | PR 변경 사항을 근거로 답한다 |
-| `/summary` | PR 변경 사항을 요약한다 |
 | `/review help` | 사용법 |
 
-`/ask`, `/summary` 는 `/review ask …` 처럼 서브커맨드로도 쓸 수 있다.
+접두사 뒤에 오는 말은 `help` 를 빼면 전부 관심 영역으로 넘어간다.
 쓰기 권한이 없는 사용자의 명령은 무시하고 👀 대신 😕 리액션을 단다.
 
 ---
@@ -186,7 +184,7 @@ GSML은 학교에서 직접 돌리는 llama.cpp 서버다. OpenAI 규격에서 �
 2. 리뷰 서버를 띄우고, App을 그 리포지토리에 설치한다. 리포지토리에는 아무것도 추가하지 않아도 된다.
 3. 기존에 `.gemini/styleguide.md` 를 쓰고 있었다면 그 내용을 `.reviewbot/config.yml` 의 `customInstructions` 로 옮긴다.
 
-트리거는 `/gemini review` → `/review`, `/gemini summary` → `/summary` 로 대응된다.
+트리거는 `/gemini review` → `/review` 로 대응된다. 요약·질의 명령은 없고 리뷰만 남긴다.
 
 ---
 
