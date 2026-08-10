@@ -10,12 +10,8 @@ COPY scripts ./scripts
 COPY src ./src
 RUN npm run build
 
-# 실행 단계 — 번들이 자체 완결이라 node_modules를 들고 갈 필요가 없다.
-#
-# 리포지토리를 체크아웃하지 않으므로 git도 필요 없다. 설정 파일까지 GitHub API로 읽는다.
-# 덕분에 슬림 이미지를 쓸 수 있고, 나가는 트래픽이 api.github.com 하나로 모인다 —
-# github.com 이 막힌 망에서도 리뷰가 돈다.
-FROM node:24-slim
+# 실행 단계 — 번들이 자체 완결이라 node_modules를 들고 갈 필요가 없다
+FROM node:24
 WORKDIR /app
 
 COPY --from=build /app/dist/server.mjs ./server.mjs
