@@ -9984,20 +9984,33 @@ var LlmClient = class {
   /** JSON 응답을 스키마로 검증해서 돌려준다. */
   async chatJson(messages, schema, options = {}) {
     const content = await this.chat(messages, { ...options, json: true });
+    log.debug(`\uBAA8\uB378 \uC6D0\uBB38 \uC751\uB2F5
+${content}`);
     const json2 = extractJsonObject(content);
-    if (json2 === void 0) throw new LlmError(`\uC751\uB2F5\uC5D0\uC11C JSON \uAC1D\uCCB4\uB97C \uCC3E\uC9C0 \uBABB\uD588\uB2E4: ${content.slice(0, 300)}`);
+    if (json2 === void 0) {
+      throw new LlmError(`\uC751\uB2F5\uC5D0\uC11C JSON \uAC1D\uCCB4\uB97C \uCC3E\uC9C0 \uBABB\uD588\uB2E4.${evidence(content, content)}`);
+    }
     let parsed;
     try {
       parsed = JSON.parse(json2);
     } catch (error51) {
-      throw new LlmError(`JSON.parse \uC2E4\uD328: ${error51.message}`);
+      throw new LlmError(`JSON.parse \uC2E4\uD328: ${error51.message}${evidence(content, json2)}`);
     }
     const result = schema.safeParse(parsed);
     if (result.success) return result.data;
     const issues = result.error.issues.slice(0, 5).map((issue2) => `${issue2.path.join(".") || "(root)"}: ${issue2.message}`).join("; ");
-    throw new LlmError(`\uC751\uB2F5\uC774 \uC2A4\uD0A4\uB9C8\uC640 \uB9DE\uC9C0 \uC54A\uB294\uB2E4 \u2014 ${issues}`);
+    throw new LlmError(`\uC751\uB2F5\uC774 \uC2A4\uD0A4\uB9C8\uC640 \uB9DE\uC9C0 \uC54A\uB294\uB2E4 \u2014 ${issues}${evidence(content, json2)}`);
   }
 };
+function evidence(raw, attempted) {
+  const parts = [`
+--- \uD30C\uC2F1\uD558\uB824\uB358 \uB0B4\uC6A9 ---
+${attempted.slice(0, 600)}`];
+  if (raw.includes("<think>")) {
+    parts.push("\n(\uC751\uB2F5\uC5D0 <think> \uBE14\uB85D\uC774 \uC788\uB2E4 \u2014 \uCD94\uB860 \uC18D \uCD08\uC548\uC744 \uC9D1\uC5C8\uC744 \uC218 \uC788\uB2E4. \uC804\uCCB4 \uC6D0\uBB38\uC740 REVIEWBOT_DEBUG=1 \uB85C \uBCFC \uC218 \uC788\uB2E4)");
+  }
+  return parts.join("");
+}
 function extractJsonObject(raw) {
   const text = raw.trim();
   const start = text.indexOf("{");

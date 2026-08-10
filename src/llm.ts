@@ -1,5 +1,6 @@
 import type { ZodType } from 'zod'
 import { describeNetworkError } from './net'
+import { log } from './logger'
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -111,15 +112,18 @@ export class LlmClient {
   /** JSON 응답을 스키마로 검증해서 돌려준다. */
   async chatJson<T>(messages: ChatMessage[], schema: ZodType<T>, options: ChatOptions = {}): Promise<T> {
     const content = await this.chat(messages, { ...options, json: true })
+    log.debug(`모델 원문 응답\n${content}`)
 
     const json = extractJsonObject(content)
-    if (json === undefined) throw new LlmError(`응답에서 JSON 객체를 찾지 못했다: ${content.slice(0, 300)}`)
+    if (json === undefined) {
+      throw new LlmError(`응답에서 JSON 객체를 찾지 못했다.${evidence(content, content)}`)
+    }
 
     let parsed: unknown
     try {
       parsed = JSON.parse(json)
     } catch (error) {
-      throw new LlmError(`JSON.parse 실패: ${(error as Error).message}`)
+      throw new LlmError(`JSON.parse 실패: ${(error as Error).message}${evidence(content, json)}`)
     }
 
     const result = schema.safeParse(parsed)
@@ -128,8 +132,23 @@ export class LlmClient {
       .slice(0, 5)
       .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
       .join('; ')
-    throw new LlmError(`응답이 스키마와 맞지 않는다 — ${issues}`)
+    throw new LlmError(`응답이 스키마와 맞지 않는다 — ${issues}${evidence(content, json)}`)
   }
+}
+
+/**
+ * 파싱 실패를 눈으로 볼 수 있게 근거를 붙인다.
+ *
+ * 실패했다는 사실만 남기면 서버를 고칠 근거가 없다. 특히 이 모델은 본문 앞에
+ * `<think>` 블록을 붙이고 그 안에 답안 초안을 적어보는데, 초안이 먼저 나오면
+ * extractJsonObject가 그쪽을 집는다 — 그 경우를 바로 알아볼 수 있게 표시한다.
+ */
+function evidence(raw: string, attempted: string): string {
+  const parts = [`\n--- 파싱하려던 내용 ---\n${attempted.slice(0, 600)}`]
+  if (raw.includes('<think>')) {
+    parts.push('\n(응답에 <think> 블록이 있다 — 추론 속 초안을 집었을 수 있다. 전체 원문은 REVIEWBOT_DEBUG=1 로 볼 수 있다)')
+  }
+  return parts.join('')
 }
 
 /**
