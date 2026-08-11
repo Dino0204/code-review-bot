@@ -14597,7 +14597,9 @@ function isBotActor(login) {
 
 // src/review/commands.ts
 function hasReviewTrigger(body, triggerPrefix = "/review") {
-  return body.split("\n").map((line) => line.trim()).some((line) => line === triggerPrefix || line.startsWith(`${triggerPrefix} `));
+  return body.split("\n").map((line) => line.trim()).some(
+    (line) => line === triggerPrefix || line.startsWith(`${triggerPrefix} `)
+  );
 }
 
 // node_modules/balanced-match/dist/esm/index.js
