@@ -18,5 +18,6 @@ services:
       REVIEWBOT_ALLOWED_REPOS: ${REVIEWBOT_ALLOWED_REPOS:-}
       # 같은 호스트에서 모델을 돌린다면 localhost로 바꾼다 — 키가 네트워크를 안 건넌다
       REVIEWBOT_BASE_URL: ${REVIEWBOT_BASE_URL:-http://ssh.gsmsv.site:26145/v1}
+      REVIEWBOT_DEBUG: ${REVIEWBOT_DEBUG:-}
     volumes:
       - ./secrets/app-private-key.pem:/run/secrets/app-private-key.pem:ro
