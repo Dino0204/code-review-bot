@@ -21,9 +21,17 @@ export interface ChatOptions {
 }
 
 export class LlmError extends Error {
-  constructor(message: string) {
+  /**
+   * 구조화된 JSON으로 파싱하지 못했을 때도, 모델이 만든 원문(think 블록 제외)은 남아 있다.
+   * 이건 GSML 서버의 규격 위반이 아니라 우리 쪽 JSON 추출 로직의 한계이므로,
+   * 호출부가 원하면 이 원문을 그대로 게시하는 등으로 구제할 수 있게 노출한다.
+   */
+  readonly rawContent?: string
+
+  constructor(message: string, rawContent?: string) {
     super(message)
     this.name = 'LlmError'
+    this.rawContent = rawContent
   }
 }
 
@@ -114,17 +122,14 @@ export class LlmClient {
     const content = await this.chat(messages, { ...options, json: true })
     log.debug(`모델 원문 응답\n${content}`)
 
-    const json = extractJsonObject(stripThinkBlock(content))
+    const cleaned = stripThinkBlock(content)
+    const json = extractJsonObject(cleaned)
     if (json === undefined) {
-      throw new LlmError(`응답에서 JSON 객체를 찾지 못했다.${evidence(content, content)}`)
+      throw new LlmError(`응답에서 JSON 객체를 찾지 못했다.${evidence(content, cleaned)}`, cleaned)
     }
 
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(json)
-    } catch (error) {
-      throw new LlmError(`JSON.parse 실패: ${(error as Error).message}${evidence(content, json)}`)
-    }
+    // extractJsonObject는 이미 JSON.parse가 되는 후보만 돌려준다
+    const parsed: unknown = JSON.parse(json)
 
     const result = schema.safeParse(parsed)
     if (result.success) return result.data
@@ -132,7 +137,7 @@ export class LlmClient {
       .slice(0, 5)
       .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
       .join('; ')
-    throw new LlmError(`응답이 스키마와 맞지 않는다 — ${issues}${evidence(content, json)}`)
+    throw new LlmError(`응답이 스키마와 맞지 않는다 — ${issues}${evidence(content, json)}`, cleaned)
   }
 }
 

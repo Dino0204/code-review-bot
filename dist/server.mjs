@@ -11707,9 +11707,16 @@ function meetsSeverity(severity, threshold) {
 
 // src/llm.ts
 var LlmError = class extends Error {
-  constructor(message) {
+  /**
+   * 구조화된 JSON으로 파싱하지 못했을 때도, 모델이 만든 원문(think 블록 제외)은 남아 있다.
+   * 이건 GSML 서버의 규격 위반이 아니라 우리 쪽 JSON 추출 로직의 한계이므로,
+   * 호출부가 원하면 이 원문을 그대로 게시하는 등으로 구제할 수 있게 노출한다.
+   */
+  rawContent;
+  constructor(message, rawContent) {
     super(message);
     this.name = "LlmError";
+    this.rawContent = rawContent;
   }
 };
 var LlmClient = class {
@@ -11771,20 +11778,16 @@ var LlmClient = class {
     const content = await this.chat(messages, { ...options, json: true });
     log.debug(`\uBAA8\uB378 \uC6D0\uBB38 \uC751\uB2F5
 ${content}`);
-    const json2 = extractJsonObject(stripThinkBlock(content));
+    const cleaned = stripThinkBlock(content);
+    const json2 = extractJsonObject(cleaned);
     if (json2 === void 0) {
-      throw new LlmError(`\uC751\uB2F5\uC5D0\uC11C JSON \uAC1D\uCCB4\uB97C \uCC3E\uC9C0 \uBABB\uD588\uB2E4.${evidence(content, content)}`);
+      throw new LlmError(`\uC751\uB2F5\uC5D0\uC11C JSON \uAC1D\uCCB4\uB97C \uCC3E\uC9C0 \uBABB\uD588\uB2E4.${evidence(content, cleaned)}`, cleaned);
     }
-    let parsed;
-    try {
-      parsed = JSON.parse(json2);
-    } catch (error51) {
-      throw new LlmError(`JSON.parse \uC2E4\uD328: ${error51.message}${evidence(content, json2)}`);
-    }
+    const parsed = JSON.parse(json2);
     const result = schema.safeParse(parsed);
     if (result.success) return result.data;
     const issues = result.error.issues.slice(0, 5).map((issue2) => `${issue2.path.join(".") || "(root)"}: ${issue2.message}`).join("; ");
-    throw new LlmError(`\uC751\uB2F5\uC774 \uC2A4\uD0A4\uB9C8\uC640 \uB9DE\uC9C0 \uC54A\uB294\uB2E4 \u2014 ${issues}${evidence(content, json2)}`);
+    throw new LlmError(`\uC751\uB2F5\uC774 \uC2A4\uD0A4\uB9C8\uC640 \uB9DE\uC9C0 \uC54A\uB294\uB2E4 \u2014 ${issues}${evidence(content, json2)}`, cleaned);
   }
 };
 function evidence(raw, attempted) {
@@ -31466,11 +31469,7 @@ async function runReview(deps, pr) {
   for (const [index, chunk] of chunks.entries()) {
     if (chunks.length > 1) log.info(`\uCCAD\uD06C ${index + 1}/${chunks.length} \uB9AC\uBDF0 \uC911 (${chunk.length}\uAC1C \uD30C\uC77C)`);
     const chunkContext = { ...context, diffFiles: chunk };
-    const result = await llm.chatJson(buildReviewMessages(chunkContext), reviewResultSchema, {
-      temperature: config2.temperature,
-      maxTokens: config2.maxOutputTokens
-    });
-    results.push(result);
+    results.push(await requestReview(llm, chunkContext, config2));
   }
   const merged = mergeResults(results);
   const { inline, overflow } = prepareFindings(merged, context.diffFiles, config2);
@@ -31501,6 +31500,24 @@ async function runReview(deps, pr) {
     inline: posted,
     verdict: merged.verdict
   };
+}
+async function requestReview(llm, context, config2) {
+  try {
+    return await llm.chatJson(buildReviewMessages(context), reviewResultSchema, {
+      temperature: config2.temperature,
+      maxTokens: config2.maxOutputTokens
+    });
+  } catch (error51) {
+    if (!(error51 instanceof LlmError) || error51.rawContent === void 0) throw error51;
+    log.warn(`\uAD6C\uC870\uD654\uB41C JSON\uC73C\uB85C \uD30C\uC2F1\uD558\uC9C0 \uBABB\uD574 \uC6D0\uBB38\uC744 \uC694\uC57D\uC73C\uB85C \uB300\uC2E0 \uC2E3\uB294\uB2E4 \u2014 ${error51.message}`);
+    return {
+      summary: `_(\uAD6C\uC870\uD654\uB41C \uD615\uC2DD\uC73C\uB85C \uD30C\uC2F1\uD558\uC9C0 \uBABB\uD574 \uBAA8\uB378 \uC6D0\uBB38\uC744 \uADF8\uB300\uB85C \uC2E3\uB294\uB2E4)_
+
+${error51.rawContent.trim()}`,
+      findings: [],
+      verdict: "comment"
+    };
+  }
 }
 function mergeResults(results) {
   if (results.length === 1) return results[0];

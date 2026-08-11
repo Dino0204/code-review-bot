@@ -1,6 +1,7 @@
 import { minimatch } from 'minimatch'
 import type { BotConfig } from '../config'
 import { meetsSeverity } from '../config'
+import { LlmError } from '../llm'
 import type { LlmClient } from '../llm'
 import type { GitHubClient, InlineComment, PullRequestInfo } from '../github/client'
 import type { DiffFile } from '../github/diff'
@@ -102,11 +103,7 @@ export async function runReview(deps: RunnerDeps, pr: PullRequestInfo): Promise<
   for (const [index, chunk] of chunks.entries()) {
     if (chunks.length > 1) log.info(`청크 ${index + 1}/${chunks.length} 리뷰 중 (${chunk.length}개 파일)`)
     const chunkContext: ReviewContext = { ...context, diffFiles: chunk }
-    const result = await llm.chatJson(buildReviewMessages(chunkContext), reviewResultSchema, {
-      temperature: config.temperature,
-      maxTokens: config.maxOutputTokens,
-    })
-    results.push(result)
+    results.push(await requestReview(llm, chunkContext, config))
   }
 
   const merged = mergeResults(results)
@@ -142,6 +139,29 @@ export async function runReview(deps: RunnerDeps, pr: PullRequestInfo): Promise<
     findings: inline.length + overflow.length,
     inline: posted,
     verdict: merged.verdict,
+  }
+}
+
+/**
+ * 모델 응답을 구조화된 JSON으로 받는다. GSML 서버 자체의 규격 위반(네트워크 오류,
+ * 빈 응답, HTTP 오류 등)은 그대로 던져 실패시키지만, JSON 추출/스키마 검증 실패는
+ * 우리 쪽 파싱 로직의 한계일 뿐 모델이 리뷰 자체는 만들어냈을 수 있다 — 원문을
+ * 요약으로 대신 실어서 인라인 코멘트 없이도 리뷰가 통째로 사라지지 않게 한다.
+ */
+async function requestReview(llm: LlmClient, context: ReviewContext, config: BotConfig): Promise<ReviewResult> {
+  try {
+    return await llm.chatJson(buildReviewMessages(context), reviewResultSchema, {
+      temperature: config.temperature,
+      maxTokens: config.maxOutputTokens,
+    })
+  } catch (error) {
+    if (!(error instanceof LlmError) || error.rawContent === undefined) throw error
+    log.warn(`구조화된 JSON으로 파싱하지 못해 원문을 요약으로 대신 싣는다 — ${error.message}`)
+    return {
+      summary: `_(구조화된 형식으로 파싱하지 못해 모델 원문을 그대로 싣는다)_\n\n${error.rawContent.trim()}`,
+      findings: [],
+      verdict: 'comment',
+    }
   }
 }
 
