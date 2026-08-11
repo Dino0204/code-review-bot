@@ -188,12 +188,14 @@ export function prepareFindings(
       continue
     }
 
-    const line = snapToCommentableLine(file, raw.line)
+    // line === 0은 모델이 특정 줄을 짚지 못했다는 뜻(schema.ts 참고) — 스냅을 시도하지 않고 바로 요약행이다
+    const hasLine = raw.line > 0
+    const line = hasLine ? snapToCommentableLine(file, raw.line) : undefined
     const endLine = raw.end_line ? snapToCommentableLine(file, raw.end_line) : undefined
 
     const finding: Finding = {
       file: file.path,
-      line: line ?? raw.line,
+      line: line ?? (hasLine ? raw.line : 1),
       endLine: endLine ?? undefined,
       severity: raw.severity,
       category: normalizeCategory(raw.category),

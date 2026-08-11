@@ -31132,8 +31132,8 @@ var CATEGORIES = [
 ];
 var findingSchema = external_exports.object({
   file: external_exports.string().min(1),
-  line: external_exports.coerce.number().int().positive(),
-  end_line: external_exports.coerce.number().int().positive().nullish(),
+  line: external_exports.coerce.number().int().positive().catch(0),
+  end_line: external_exports.coerce.number().int().positive().nullish().catch(void 0),
   severity: external_exports.enum(SEVERITIES).catch("minor"),
   category: external_exports.string().catch("other"),
   title: external_exports.string().min(1),
@@ -31502,11 +31502,12 @@ function prepareFindings(result, files, config2) {
       log.debug(`diff\uC5D0 \uC5C6\uB294 \uD30C\uC77C\uC774\uB77C \uBC84\uB9B0\uB2E4: ${raw.file}`);
       continue;
     }
-    const line = snapToCommentableLine(file2, raw.line);
+    const hasLine = raw.line > 0;
+    const line = hasLine ? snapToCommentableLine(file2, raw.line) : void 0;
     const endLine = raw.end_line ? snapToCommentableLine(file2, raw.end_line) : void 0;
     const finding = {
       file: file2.path,
-      line: line ?? raw.line,
+      line: line ?? (hasLine ? raw.line : 1),
       endLine: endLine ?? void 0,
       severity: raw.severity,
       category: normalizeCategory(raw.category),

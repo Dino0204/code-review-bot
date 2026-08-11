@@ -16,12 +16,15 @@ export type Category = (typeof CATEGORIES)[number]
 
 /**
  * 모델 출력은 신뢰할 수 없으므로 최대한 관대하게 받아들이고(coerce/catch),
- * 정말 없으면 안 되는 필드(file/line/title/detail)만 엄격하게 검증한다.
+ * 정말 없으면 안 되는 필드(file/title/detail)만 엄격하게 검증한다.
+ * line은 diff에 없는 파일(예: package.json 미변경)에 대한 지적처럼 모델이
+ * 특정 줄을 짚지 못하는 경우가 있어, 실패 시 0("줄 없음")으로 떨어뜨린다 —
+ * 하나의 findings 항목이 배열 전체 파싱을 무너뜨리면 안 된다.
  */
 export const findingSchema = z.object({
   file: z.string().min(1),
-  line: z.coerce.number().int().positive(),
-  end_line: z.coerce.number().int().positive().nullish(),
+  line: z.coerce.number().int().positive().catch(0),
+  end_line: z.coerce.number().int().positive().nullish().catch(undefined),
   severity: z.enum(SEVERITIES).catch('minor'),
   category: z.string().catch('other'),
   title: z.string().min(1),
