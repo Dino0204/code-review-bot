@@ -1,0 +1,33 @@
+# themoment-ai-harness-sync 동기화 설정
+# 참고: https://github.com/themoment-team/themoment-ai-harness-sync/wiki/Per-Repo-Config
+
+enabled: true
+
+groups:
+  - claude
+
+overrides:
+  # Kotlin/Spring 전용 스킬 — 이 프로젝트는 TypeScript다
+  claude/skills/kotlin-spring-arch: false
+  claude/skills/kotest-guide: false
+  claude/skills/migration-guide: false
+  claude/skills/database-schema: false
+  claude/skills/api-design: false
+
+  # Kotlin 전용 에이전트
+  claude/agents/kotlin-convention-validator: false
+  claude/agents/kotlin-test-fixer: false
+
+  # 훅은 opt-in — dispatcher 와 settings 는 필수
+  claude/hooks/dispatcher: true
+  claude/settings: true
+  # App private key 와 웹훅 시크릿을 다루는 리포다 (단, .env 는 검사 제외)
+  claude/hooks/secret-guard: true
+  claude/hooks/command-guard: true
+  # 자동화 테스트가 없어 typecheck 가 유일한 검증이다 — 저장 시마다 돌린다
+  claude/hooks/ts-check: true
+
+# sync PR 제목·본문 한국어
+language: ko
+# 리포에 'harness sync:하네스 동기화' 라벨이 없어 부착하지 않는다
+pr_label: false
