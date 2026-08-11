@@ -11802,8 +11802,26 @@ function stripThinkBlock(raw) {
 }
 function extractJsonObject(raw) {
   const text = raw.trim();
-  const start = text.indexOf("{");
-  if (start === -1) return void 0;
+  let searchFrom = 0;
+  while (searchFrom < text.length) {
+    const start = text.indexOf("{", searchFrom);
+    if (start === -1) return void 0;
+    const end = findBalancedBraceEnd(text, start);
+    if (end === void 0) {
+      searchFrom = start + 1;
+      continue;
+    }
+    const candidate = text.slice(start, end + 1);
+    try {
+      JSON.parse(candidate);
+      return candidate;
+    } catch {
+      searchFrom = end + 1;
+    }
+  }
+  return void 0;
+}
+function findBalancedBraceEnd(text, start) {
   let depth = 0;
   let inString = false;
   let escaped = false;
@@ -11819,7 +11837,7 @@ function extractJsonObject(raw) {
     else if (char === "{") depth++;
     else if (char === "}") {
       depth--;
-      if (depth === 0) return text.slice(start, i + 1);
+      if (depth === 0) return i;
     }
   }
   return void 0;

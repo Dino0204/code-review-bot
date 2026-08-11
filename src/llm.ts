@@ -163,14 +163,37 @@ export function stripThinkBlock(raw: string): string {
 }
 
 /**
- * 코드펜스/설명이 섞여 있어도 첫 번째 균형 잡힌 JSON 객체를 뽑아낸다.
+ * 코드펜스/설명이 섞여 있어도 실제로 JSON.parse가 되는 첫 번째 균형 잡힌 객체를 뽑아낸다.
+ * think 블록을 걷어내도, 모델이 답변 앞에 diff 속 코드를 인용하는 일이 있어 — 그 코드의
+ * `{`가 먼저 걸리면 균형은 맞아도 JSON이 아니다. 그런 후보는 버리고 다음 `{`부터 다시 찾는다.
  * 문자열 리터럴 안의 중괄호는 무시한다.
  */
 export function extractJsonObject(raw: string): string | undefined {
   const text = raw.trim()
-  const start = text.indexOf('{')
-  if (start === -1) return undefined
+  let searchFrom = 0
 
+  while (searchFrom < text.length) {
+    const start = text.indexOf('{', searchFrom)
+    if (start === -1) return undefined
+
+    const end = findBalancedBraceEnd(text, start)
+    if (end === undefined) {
+      searchFrom = start + 1
+      continue
+    }
+
+    const candidate = text.slice(start, end + 1)
+    try {
+      JSON.parse(candidate)
+      return candidate
+    } catch {
+      searchFrom = end + 1
+    }
+  }
+  return undefined
+}
+
+function findBalancedBraceEnd(text: string, start: number): number | undefined {
   let depth = 0
   let inString = false
   let escaped = false
@@ -187,7 +210,7 @@ export function extractJsonObject(raw: string): string | undefined {
     else if (char === '{') depth++
     else if (char === '}') {
       depth--
-      if (depth === 0) return text.slice(start, i + 1)
+      if (depth === 0) return i
     }
   }
   return undefined
