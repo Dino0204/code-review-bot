@@ -1,0 +1,274 @@
+import { minimatch } from 'minimatch'
+import type { BotConfig } from '../config'
+import { meetsSeverity } from '../config'
+import { LlmError } from '../llm'
+import type { LlmClient } from '../llm'
+import type { GitHubClient, InlineComment, PullRequestInfo } from '../github/client'
+import type { DiffFile } from '../github/diff'
+import { parseUnifiedDiff, renderFileDiff, snapToCommentableLine } from '../github/diff'
+import { buildReviewMessages } from './prompt'
+import type { ReviewContext } from './prompt'
+import { reviewResultSchema, normalizeCategory } from './schema'
+import type { Finding, ReviewResult } from './schema'
+import { renderFindingComment, renderPlainComment, renderReviewSummary } from './render'
+import { log } from '../logger'
+
+export interface RunnerDeps {
+  github: GitHubClient
+  llm: LlmClient
+  config: BotConfig
+}
+
+interface GatheredContext {
+  context: ReviewContext
+  skippedFiles: number
+}
+
+/** PR diff를 받아 리뷰 대상 파일만 추린다 */
+async function gatherContext(deps: RunnerDeps, pr: PullRequestInfo): Promise<GatheredContext> {
+  const { github, config } = deps
+
+  const rawDiff = await github.getPullRequestDiff(pr.number)
+  const allFiles = parseUnifiedDiff(rawDiff)
+  const { selected, skipped } = filterFiles(allFiles, config)
+  log.info(`diff 파일 ${allFiles.length}개 중 ${selected.length}개 리뷰 대상 (${skipped}개 제외)`)
+
+  return {
+    context: { config, pr, diffFiles: selected },
+    skippedFiles: skipped,
+  }
+}
+
+export function filterFiles(files: DiffFile[], config: BotConfig): { selected: DiffFile[]; skipped: number } {
+  const matched = files.filter((file) => {
+    if (file.isBinary) return false
+    if (file.status === 'deleted') return false // 삭제된 파일에는 코멘트를 달 수 없다
+    if (config.include.length && !config.include.some((pattern) => minimatch(file.path, pattern, { dot: true }))) return false
+    if (config.exclude.some((pattern) => minimatch(file.path, pattern, { dot: true }))) return false
+    return file.hunks.length > 0
+  })
+
+  // 변경량이 큰 파일부터 — 예산이 모자라면 사소한 파일이 잘려나가게 한다
+  const sorted = [...matched].sort((a, b) => b.additions + b.deletions - (a.additions + a.deletions))
+  const selected = sorted.slice(0, config.maxFiles)
+  return { selected, skipped: files.length - selected.length }
+}
+
+/** diff가 프롬프트 예산을 넘으면 파일 단위로 쪼갠다. */
+export function chunkFiles(files: DiffFile[], config: BotConfig): DiffFile[][] {
+  const diffBudget = Math.floor(config.maxPromptChars * 0.5)
+  const chunks: DiffFile[][] = []
+  let current: DiffFile[] = []
+  let size = 0
+
+  for (const file of files) {
+    const rendered = renderFileDiff(file, config.maxFileChars).length
+    if (current.length > 0 && size + rendered > diffBudget) {
+      chunks.push(current)
+      current = []
+      size = 0
+    }
+    current.push(file)
+    size += rendered
+  }
+  if (current.length) chunks.push(current)
+  return chunks.length ? chunks : [[]]
+}
+
+export interface ReviewOutcome {
+  posted: boolean
+  findings: number
+  inline: number
+  verdict: ReviewResult['verdict']
+}
+
+export async function runReview(deps: RunnerDeps, pr: PullRequestInfo): Promise<ReviewOutcome> {
+  const { github, llm, config } = deps
+  const { context, skippedFiles } = await gatherContext(deps, pr)
+
+  if (context.diffFiles.length === 0) {
+    await github.createIssueComment(
+      pr.number,
+      renderPlainComment('🤖 코드 리뷰', '리뷰할 변경 사항이 없다. (제외 패턴에 걸렸거나 바이너리/삭제만 포함된 PR)', {
+        model: llm.model,
+      }),
+    )
+    return { posted: true, findings: 0, inline: 0, verdict: 'approve' }
+  }
+
+  const chunks = chunkFiles(context.diffFiles, config)
+  log.info(`리뷰 청크 ${chunks.length}개`)
+
+  const results: ReviewResult[] = []
+  for (const [index, chunk] of chunks.entries()) {
+    if (chunks.length > 1) log.info(`청크 ${index + 1}/${chunks.length} 리뷰 중 (${chunk.length}개 파일)`)
+    const chunkContext: ReviewContext = { ...context, diffFiles: chunk }
+    results.push(await requestReview(llm, chunkContext, config))
+  }
+
+  const merged = mergeResults(results)
+  const { inline, overflow } = prepareFindings(merged, context.diffFiles, config)
+
+  // GitHub 멀티라인 코멘트는 `line`이 끝 줄, `start_line`이 시작 줄이다
+  const comments: InlineComment[] = inline.map((finding) => {
+    const hasRange = finding.endLine !== undefined && finding.endLine > finding.line
+    return {
+      path: finding.file,
+      line: hasRange ? finding.endLine! : finding.line,
+      startLine: hasRange ? finding.line : undefined,
+      body: renderFindingComment(finding),
+    }
+  })
+
+  const body = renderReviewSummary(merged, inline, overflow, {
+    model: llm.model,
+    reviewedFiles: context.diffFiles.length,
+    skippedFiles,
+    promptTokens: llm.totalUsage.prompt_tokens,
+    completionTokens: llm.totalUsage.completion_tokens,
+    chunks: chunks.length,
+  }, config)
+
+  const { posted, degraded } = await github.createReview(pr.number, pr.headSha, body, comments)
+  if (degraded) {
+    log.warn('인라인 코멘트가 등록되지 않아 요약만 게시했다')
+  }
+
+  return {
+    posted: true,
+    findings: inline.length + overflow.length,
+    inline: posted,
+    verdict: merged.verdict,
+  }
+}
+
+/**
+ * 모델 응답을 구조화된 JSON으로 받는다. GSML 서버 자체의 규격 위반(네트워크 오류,
+ * 빈 응답, HTTP 오류 등)은 그대로 던져 실패시키지만, JSON 추출/스키마 검증 실패는
+ * 우리 쪽 파싱 로직의 한계일 뿐 모델이 리뷰 자체는 만들어냈을 수 있다 — 원문을
+ * 요약으로 대신 실어서 인라인 코멘트 없이도 리뷰가 통째로 사라지지 않게 한다.
+ */
+async function requestReview(llm: LlmClient, context: ReviewContext, config: BotConfig): Promise<ReviewResult> {
+  try {
+    return await llm.chatJson(buildReviewMessages(context), reviewResultSchema, {
+      temperature: config.temperature,
+      maxTokens: config.maxOutputTokens,
+    })
+  } catch (error) {
+    if (!(error instanceof LlmError) || error.rawContent === undefined) throw error
+    log.warn(`구조화된 JSON으로 파싱하지 못해 원문을 요약으로 대신 싣는다 — ${error.message}`)
+    return {
+      summary: `_(구조화된 형식으로 파싱하지 못해 모델 원문을 그대로 싣는다)_\n\n${error.rawContent.trim()}`,
+      findings: [],
+      verdict: 'comment',
+    }
+  }
+}
+
+function mergeResults(results: ReviewResult[]): ReviewResult {
+  if (results.length === 1) return results[0]!
+
+  const verdictRank = { request_changes: 0, comment: 1, approve: 2 } as const
+  const verdict = results
+    .map((result) => result.verdict)
+    .sort((a, b) => verdictRank[a] - verdictRank[b])[0] as ReviewResult['verdict']
+
+  return {
+    summary: results
+      .map((result) => result.summary.trim())
+      .filter(Boolean)
+      .join('\n\n'),
+    findings: results.flatMap((result) => result.findings),
+    verdict: verdict ?? 'comment',
+  }
+}
+
+/**
+ * 모델이 뱉은 지적을 실제 게시 가능한 형태로 정제한다.
+ * - 파일 경로를 diff에 존재하는 경로로 해석
+ * - 줄 번호를 diff 안의 유효한 위치로 스냅
+ * - 심각도/확신도 임계값 적용, 중복 제거, 개수 제한
+ */
+export function prepareFindings(
+  result: ReviewResult,
+  files: DiffFile[],
+  config: BotConfig,
+): { inline: Finding[]; overflow: Finding[] } {
+  const severityOrder = { critical: 0, major: 1, minor: 2, nit: 3 }
+  const seen = new Set<string>()
+  const candidates: Finding[] = []
+
+  for (const raw of result.findings) {
+    if (!meetsSeverity(raw.severity, config.minSeverity)) continue
+    if (raw.confidence < config.minConfidence) continue
+
+    const file = resolveFile(raw.file, files)
+    if (!file) {
+      log.debug(`diff에 없는 파일이라 버린다: ${raw.file}`)
+      continue
+    }
+
+    // line === 0은 모델이 특정 줄을 짚지 못했다는 뜻(schema.ts 참고) — 스냅을 시도하지 않고 바로 요약행이다
+    const hasLine = raw.line > 0
+    const line = hasLine ? snapToCommentableLine(file, raw.line) : undefined
+    const endLine = raw.end_line ? snapToCommentableLine(file, raw.end_line) : undefined
+
+    const finding: Finding = {
+      file: file.path,
+      line: line ?? (hasLine ? raw.line : 1),
+      endLine: endLine ?? undefined,
+      severity: raw.severity,
+      category: normalizeCategory(raw.category),
+      title: raw.title.trim(),
+      detail: raw.detail.trim(),
+      suggestion: raw.suggestion?.trim() || undefined,
+      confidence: raw.confidence,
+      inlineDropped: line === undefined,
+    }
+
+    const key = dedupeKey(finding.file, finding.line, finding.title)
+    if (seen.has(key)) continue
+    seen.add(key)
+    candidates.push(finding)
+  }
+
+  candidates.sort(
+    (a, b) => severityOrder[a.severity] - severityOrder[b.severity] || b.confidence - a.confidence,
+  )
+
+  const inline: Finding[] = []
+  const overflow: Finding[] = []
+  for (const finding of candidates) {
+    if (finding.inlineDropped || inline.length >= config.maxInlineComments) overflow.push(finding)
+    else inline.push(finding)
+  }
+
+  return { inline, overflow }
+}
+
+/** 모델이 `a/src/x.ts`, `./src/x.ts`, `x.ts` 등으로 흘려 쓴 경로를 diff의 실제 경로에 맞춘다 */
+export function resolveFile(raw: string, files: DiffFile[]): DiffFile | undefined {
+  const cleaned = raw.trim().replace(/^\.\//, '').replace(/^[ab]\//, '')
+  const exact = files.find((file) => file.path === cleaned)
+  if (exact) return exact
+
+  const suffix = files.filter((file) => file.path.endsWith(`/${cleaned}`))
+  if (suffix.length === 1) return suffix[0]
+
+  const base = cleaned.split('/').pop()
+  if (!base) return undefined
+  const byBasename = files.filter((file) => file.path.endsWith(`/${base}`) || file.path === base)
+  return byBasename.length === 1 ? byBasename[0] : undefined
+}
+
+/** 같은 지적인지 판단하는 키. 제목의 앞부분만 써서 문구가 조금 달라져도 중복으로 잡는다. */
+export function dedupeKey(path: string, line: number, title: string): string {
+  const normalized = title
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/[*_`#]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+    .slice(0, 60)
+  return `${path}:${line}:${normalized}`
+}
