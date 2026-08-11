@@ -11771,7 +11771,7 @@ var LlmClient = class {
     const content = await this.chat(messages, { ...options, json: true });
     log.debug(`\uBAA8\uB378 \uC6D0\uBB38 \uC751\uB2F5
 ${content}`);
-    const json2 = extractJsonObject(content);
+    const json2 = extractJsonObject(stripThinkBlock(content));
     if (json2 === void 0) {
       throw new LlmError(`\uC751\uB2F5\uC5D0\uC11C JSON \uAC1D\uCCB4\uB97C \uCC3E\uC9C0 \uBABB\uD588\uB2E4.${evidence(content, content)}`);
     }
@@ -11791,10 +11791,14 @@ function evidence(raw, attempted) {
   const parts = [`
 --- \uD30C\uC2F1\uD558\uB824\uB358 \uB0B4\uC6A9 ---
 ${attempted.slice(0, 600)}`];
-  if (raw.includes("<think>")) {
-    parts.push("\n(\uC751\uB2F5\uC5D0 <think> \uBE14\uB85D\uC774 \uC788\uB2E4 \u2014 \uCD94\uB860 \uC18D \uCD08\uC548\uC744 \uC9D1\uC5C8\uC744 \uC218 \uC788\uB2E4. \uC804\uCCB4 \uC6D0\uBB38\uC740 REVIEWBOT_DEBUG=1 \uB85C \uBCFC \uC218 \uC788\uB2E4)");
+  if (raw.includes("<think>") && !raw.includes("</think>")) {
+    parts.push("\n(\uC751\uB2F5\uC774 <think> \uBE14\uB85D \uC548\uC5D0\uC11C \uC798\uB838\uB2E4 \u2014 \uB2F5\uBCC0\uAE4C\uC9C0 \uBABB \uAC14\uC744 \uC218 \uC788\uB2E4. \uC804\uCCB4 \uC6D0\uBB38\uC740 REVIEWBOT_DEBUG=1 \uB85C \uBCFC \uC218 \uC788\uB2E4)");
   }
   return parts.join("");
+}
+function stripThinkBlock(raw) {
+  const end = raw.indexOf("</think>");
+  return end === -1 ? raw : raw.slice(end + "</think>".length);
 }
 function extractJsonObject(raw) {
   const text = raw.trim();

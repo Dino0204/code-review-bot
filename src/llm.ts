@@ -114,7 +114,7 @@ export class LlmClient {
     const content = await this.chat(messages, { ...options, json: true })
     log.debug(`모델 원문 응답\n${content}`)
 
-    const json = extractJsonObject(content)
+    const json = extractJsonObject(stripThinkBlock(content))
     if (json === undefined) {
       throw new LlmError(`응답에서 JSON 객체를 찾지 못했다.${evidence(content, content)}`)
     }
@@ -145,10 +145,21 @@ export class LlmClient {
  */
 function evidence(raw: string, attempted: string): string {
   const parts = [`\n--- 파싱하려던 내용 ---\n${attempted.slice(0, 600)}`]
-  if (raw.includes('<think>')) {
-    parts.push('\n(응답에 <think> 블록이 있다 — 추론 속 초안을 집었을 수 있다. 전체 원문은 REVIEWBOT_DEBUG=1 로 볼 수 있다)')
+  if (raw.includes('<think>') && !raw.includes('</think>')) {
+    parts.push('\n(응답이 <think> 블록 안에서 잘렸다 — 답변까지 못 갔을 수 있다. 전체 원문은 REVIEWBOT_DEBUG=1 로 볼 수 있다)')
   }
   return parts.join('')
+}
+
+/**
+ * `<think>...</think>` 블록을 걷어낸다. 이 모델은 항상 본문 앞에 추론을 붙이는데,
+ * 리뷰 대상 diff에 템플릿 리터럴(`${...}`)이 있으면 추론 중 그 코드를 인용하다가
+ * `{`가 실제 답변보다 먼저 나타나 extractJsonObject를 오도할 수 있다.
+ * 태그가 닫히지 않았으면(응답 잘림) 원문을 그대로 둔다 — 그 경우는 파싱이 실패하는 게 맞다.
+ */
+export function stripThinkBlock(raw: string): string {
+  const end = raw.indexOf('</think>')
+  return end === -1 ? raw : raw.slice(end + '</think>'.length)
 }
 
 /**
