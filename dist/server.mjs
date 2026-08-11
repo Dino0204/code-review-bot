@@ -11531,6 +11531,44 @@ var NETWORK_HINTS = {
   SELF_SIGNED_CERT_IN_CHAIN: "\uC790\uCCB4 \uC11C\uBA85 \uC778\uC99D\uC11C\uAC00 \uB07C\uC5B4 \uC788\uB2E4. TLS\uB97C \uAC00\uB85C\uCC44\uB294 \uC7A5\uBE44\uAC00 \uC788\uC744 \uC218 \uC788\uB2E4"
 };
 
+// src/github/app.ts
+var RETRIES = 2;
+var RetryingOctokit = Octokit.plugin(retry);
+function createGitHubApp(credentials) {
+  if (!credentials.appId) throw new Error("GITHUB_APP_ID\uAC00 \uBE44\uC5B4 \uC788\uB2E4");
+  if (!credentials.privateKey)
+    throw new Error("GITHUB_APP_PRIVATE_KEY\uAC00 \uBE44\uC5B4 \uC788\uB2E4");
+  const octokit = new RetryingOctokit({ retry: { retries: RETRIES } });
+  const auth6 = createAppAuth({
+    appId: credentials.appId,
+    privateKey: normalizePrivateKey(credentials.privateKey),
+    request: octokit.request
+  });
+  return {
+    async installationToken(installationId) {
+      try {
+        const { token } = await auth6({ type: "installation", installationId });
+        return token;
+      } catch (error51) {
+        throw new Error(
+          `\uC124\uCE58 \uD1A0\uD070 \uBC1C\uAE09 \uC2E4\uD328 (installation ${installationId}${retriesOf(error51)}): ${describeNetworkError(error51)}`
+        );
+      }
+    }
+  };
+}
+function retriesOf(error51) {
+  const count = error51.request?.request?.retryCount;
+  return count ? `, \uC7AC\uC2DC\uB3C4 ${count}\uD68C` : "";
+}
+function normalizePrivateKey(raw) {
+  const trimmed = raw.trim();
+  return trimmed.includes("\\n") ? trimmed.replace(/\\n/g, "\n") : trimmed;
+}
+
+// src/config.ts
+var import_yaml = __toESM(require_dist2(), 1);
+
 // src/logger.ts
 var log = {
   debug(message) {
@@ -11547,47 +11585,7 @@ var log = {
   }
 };
 
-// src/github/app.ts
-var RETRIES = 2;
-var RetryingOctokit = Octokit.plugin(retry);
-function createGitHubApp(credentials) {
-  if (!credentials.appId) throw new Error("GITHUB_APP_ID\uAC00 \uBE44\uC5B4 \uC788\uB2E4");
-  if (!credentials.privateKey)
-    throw new Error("GITHUB_APP_PRIVATE_KEY\uAC00 \uBE44\uC5B4 \uC788\uB2E4");
-  const octokit = new RetryingOctokit({ retry: { retries: RETRIES } });
-  octokit.hook.error("request", (error51, options) => {
-    const attempts = options.request.retryCount;
-    if (typeof attempts === "number" && attempts > 1) {
-      log.warn(`\uC124\uCE58 \uD1A0\uD070 \uBC1C\uAE09 ${attempts}\uD68C \uC2DC\uB3C4 \uD6C4 \uC2E4\uD328`);
-    }
-    throw error51;
-  });
-  const auth6 = createAppAuth({
-    appId: credentials.appId,
-    privateKey: normalizePrivateKey(credentials.privateKey),
-    request: octokit.request
-  });
-  return {
-    /** 설치 ID에 대한 액세스 토큰. 만료 전까지는 auth-app이 캐시를 재사용한다. */
-    async installationToken(installationId) {
-      try {
-        const { token } = await auth6({ type: "installation", installationId });
-        return token;
-      } catch (error51) {
-        throw new Error(
-          `\uC124\uCE58 \uD1A0\uD070 \uBC1C\uAE09 \uC2E4\uD328 (installation ${installationId}): ${describeNetworkError(error51)}`
-        );
-      }
-    }
-  };
-}
-function normalizePrivateKey(raw) {
-  const trimmed = raw.trim();
-  return trimmed.includes("\\n") ? trimmed.replace(/\\n/g, "\n") : trimmed;
-}
-
 // src/config.ts
-var import_yaml = __toESM(require_dist2(), 1);
 var SEVERITIES = ["critical", "major", "minor", "nit"];
 var DEFAULT_CONFIG = {
   // GSML 게이트웨이는 모델 하나만 서빙한다. 모델 ID는 /v1/models 로 확인한다.
