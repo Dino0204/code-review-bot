@@ -14417,8 +14417,6 @@ function createGitHubClient(token, repo) {
     auth: token,
     userAgent: "gsml-code-review-bot",
     retry: { retries: RETRIES2 },
-    // octokit은 실패한 요청마다 영문 한 줄을 console.error로 찍는다(plugin-request-log).
-    // 실패는 우리가 한국어로 정리해 알리고, 설정 파일 404처럼 정상인 실패도 있어서 디버그로 내린다.
     log: { debug: log.debug, info: log.debug, warn: log.warn, error: log.debug }
   });
   const postReview = (number4, commitSha, body, comments) => octokit.rest.pulls.createReview({
@@ -14463,7 +14461,6 @@ function createGitHubClient(token, repo) {
           ...repo,
           path: path2,
           ref,
-          // format:raw면 본문이 문자열로 온다 — base64로 받아 직접 푸는 단계가 없어진다
           mediaType: { format: "raw" }
         });
         return data;
@@ -14480,11 +14477,6 @@ function createGitHubClient(token, repo) {
       });
       return data.id;
     },
-    /**
-     * 요약 + 인라인 코멘트를 한 번의 리뷰로 등록한다.
-     * 인라인 코멘트 하나라도 위치 검증에 실패하면 GitHub이 리뷰 전체를 422로 거절하므로,
-     * 실패 시 인라인 없이 요약만 다시 등록한다.
-     */
     async createReview(number4, commitSha, body, comments) {
       const payload = comments.map((comment) => ({
         path: comment.path,

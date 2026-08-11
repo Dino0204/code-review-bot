@@ -29,15 +29,9 @@ export interface InlineComment {
 
 export type Reaction = 'eyes' | '+1' | 'confused' | 'rocket'
 
-/**
- * 리뷰가 GitHub에 대해 할 수 있는 일 전부.
- * 인터페이스로 두면 호출부가 구현이 아니라 이 계약에만 묶인다.
- */
 export interface GitHubClient {
   getPullRequest(number: number): Promise<PullRequestInfo>
-  /** PR 전체 diff 원문 */
   getPullRequestDiff(number: number): Promise<string>
-  /** 리포지토리의 파일 하나. 없으면 undefined. 체크아웃 없이 설정 파일만 가져오는 데 쓴다. */
   readFile(path: string, ref: string): Promise<string | undefined>
   createIssueComment(number: number, body: string): Promise<number>
   createReview(
@@ -47,7 +41,6 @@ export interface GitHubClient {
     comments: InlineComment[],
   ): Promise<{ posted: number; degraded: boolean }>
   addReaction(commentId: number, content: Reaction): Promise<void>
-  /** 아무나 봇을 트리거해 API 쿼터를 태우지 못하도록 쓰기 권한을 확인한다 */
   hasWriteAccess(username: string): Promise<boolean>
 }
 
@@ -60,12 +53,9 @@ export function createGitHubClient(token: string, repo: RepoRef): GitHubClient {
     auth: token,
     userAgent: 'gsml-code-review-bot',
     retry: { retries: RETRIES },
-    // octokit은 실패한 요청마다 영문 한 줄을 console.error로 찍는다(plugin-request-log).
-    // 실패는 우리가 한국어로 정리해 알리고, 설정 파일 404처럼 정상인 실패도 있어서 디버그로 내린다.
     log: { debug: log.debug, info: log.debug, warn: log.warn, error: log.debug },
   })
 
-  /** 인라인 코멘트 유무만 다른 두 번의 등록을 한 곳으로 모은다 */
   const postReview = (
     number: number,
     commitSha: string,
@@ -110,7 +100,6 @@ export function createGitHubClient(token: string, repo: RepoRef): GitHubClient {
         pull_number: number,
         mediaType: { format: 'diff' },
       })
-      // format:diff를 쓰면 body가 문자열로 온다 (타입 정의는 객체로 되어 있음)
       return response.data as unknown as string
     },
 
@@ -120,13 +109,10 @@ export function createGitHubClient(token: string, repo: RepoRef): GitHubClient {
           ...repo,
           path,
           ref,
-          // format:raw면 본문이 문자열로 온다 — base64로 받아 직접 푸는 단계가 없어진다
           mediaType: { format: 'raw' },
         })
         return data as unknown as string
       } catch (error) {
-        // 설정 파일이 없는 건 정상이다. 그 외(권한 부족, 망 문제)까지 삼키면
-        // 기본 설정으로 리뷰가 돌아버려 문제가 드러나지 않는다.
         if ((error as { status?: number }).status === 404) return undefined
         throw error
       }
@@ -141,11 +127,6 @@ export function createGitHubClient(token: string, repo: RepoRef): GitHubClient {
       return data.id
     },
 
-    /**
-     * 요약 + 인라인 코멘트를 한 번의 리뷰로 등록한다.
-     * 인라인 코멘트 하나라도 위치 검증에 실패하면 GitHub이 리뷰 전체를 422로 거절하므로,
-     * 실패 시 인라인 없이 요약만 다시 등록한다.
-     */
     async createReview(number, commitSha, body, comments) {
       const payload: ReviewComment[] = comments.map((comment) => ({
         path: comment.path,
@@ -195,7 +176,6 @@ export function createGitHubClient(token: string, repo: RepoRef): GitHubClient {
   }
 }
 
-/** createReview가 GitHub에 넘기는 인라인 코멘트 모양 */
 interface ReviewComment {
   path: string
   line: number
