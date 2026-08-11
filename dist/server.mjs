@@ -9763,34 +9763,37 @@ function isTransientAuthError(error51) {
   if (typeof status !== "number") return true;
   return status === 429 || status >= 500;
 }
-var GitHubApp = class {
-  auth;
-  constructor(credentials) {
-    if (!credentials.appId) throw new Error("GITHUB_APP_ID\uAC00 \uBE44\uC5B4 \uC788\uB2E4");
-    if (!credentials.privateKey) throw new Error("GITHUB_APP_PRIVATE_KEY\uAC00 \uBE44\uC5B4 \uC788\uB2E4");
-    this.auth = createAppAuth({
-      appId: credentials.appId,
-      privateKey: normalizePrivateKey(credentials.privateKey)
-    });
-  }
-  /** 설치 ID에 대한 액세스 토큰. 만료 전까지는 라이브러리가 캐시를 재사용한다. */
-  async installationToken(installationId) {
-    let lastError;
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      try {
-        const { token } = await this.auth({ type: "installation", installationId });
-        if (attempt > 1) log.info(`\uC124\uCE58 \uD1A0\uD070 \uBC1C\uAE09 \uC131\uACF5 (${attempt}\uBC88\uC9F8 \uC2DC\uB3C4)`);
-        return token;
-      } catch (error51) {
-        lastError = error51;
-        if (!isTransientAuthError(error51) || attempt === MAX_ATTEMPTS) break;
-        log.warn(`\uC124\uCE58 \uD1A0\uD070 \uBC1C\uAE09 \uC7AC\uC2DC\uB3C4 ${attempt}/${MAX_ATTEMPTS - 1} \u2014 ${describeNetworkError(error51)}`);
-        await sleep(attempt * 1e3);
+function createGitHubApp(credentials) {
+  if (!credentials.appId) throw new Error("GITHUB_APP_ID\uAC00 \uBE44\uC5B4 \uC788\uB2E4");
+  if (!credentials.privateKey) throw new Error("GITHUB_APP_PRIVATE_KEY\uAC00 \uBE44\uC5B4 \uC788\uB2E4");
+  const auth6 = createAppAuth({
+    appId: credentials.appId,
+    privateKey: normalizePrivateKey(credentials.privateKey)
+  });
+  return {
+    /** 설치 ID에 대한 액세스 토큰. 만료 전까지는 라이브러리가 캐시를 재사용한다. */
+    async installationToken(installationId) {
+      let lastError;
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+          const { token } = await auth6({ type: "installation", installationId });
+          if (attempt > 1) log.info(`\uC124\uCE58 \uD1A0\uD070 \uBC1C\uAE09 \uC131\uACF5 (${attempt}\uBC88\uC9F8 \uC2DC\uB3C4)`);
+          return token;
+        } catch (error51) {
+          lastError = error51;
+          if (!isTransientAuthError(error51) || attempt === MAX_ATTEMPTS) break;
+          log.warn(
+            `\uC124\uCE58 \uD1A0\uD070 \uBC1C\uAE09 \uC7AC\uC2DC\uB3C4 ${attempt}/${MAX_ATTEMPTS - 1} \u2014 ${describeNetworkError(error51)}`
+          );
+          await sleep(attempt * 1e3);
+        }
       }
+      throw new Error(
+        `\uC124\uCE58 \uD1A0\uD070 \uBC1C\uAE09 \uC2E4\uD328 (installation ${installationId}): ${describeNetworkError(lastError)}`
+      );
     }
-    throw new Error(`\uC124\uCE58 \uD1A0\uD070 \uBC1C\uAE09 \uC2E4\uD328 (installation ${installationId}): ${describeNetworkError(lastError)}`);
-  }
-};
+  };
+}
 function normalizePrivateKey(raw) {
   const trimmed = raw.trim();
   return trimmed.includes("\\n") ? trimmed.replace(/\\n/g, "\n") : trimmed;
@@ -30338,7 +30341,7 @@ function main() {
   const webhookSecret = required2("GITHUB_WEBHOOK_SECRET");
   const gsmlApiKey = required2("GSML_API_KEY");
   const deps = {
-    app: new GitHubApp({ appId: required2("GITHUB_APP_ID"), privateKey: privateKey() }),
+    app: createGitHubApp({ appId: required2("GITHUB_APP_ID"), privateKey: privateKey() }),
     gsmlApiKey,
     allowedRepos: allowedRepos()
   };

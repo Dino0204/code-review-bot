@@ -9,7 +9,7 @@
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { readFileSync } from 'node:fs'
-import { GitHubApp } from '../github/app'
+import { createGitHubApp } from '../github/app'
 import type { RawEvent } from '../github/event'
 import { accept } from './handler'
 import type { HandlerDeps } from './handler'
@@ -42,7 +42,7 @@ function main(): void {
   const gsmlApiKey = required('GSML_API_KEY')
 
   const deps: HandlerDeps = {
-    app: new GitHubApp({ appId: required('GITHUB_APP_ID'), privateKey: privateKey() }),
+    app: createGitHubApp({ appId: required('GITHUB_APP_ID'), privateKey: privateKey() }),
     gsmlApiKey,
     allowedRepos: allowedRepos(),
   }
