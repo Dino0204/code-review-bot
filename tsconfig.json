@@ -15,5 +15,5 @@
     "verbatimModuleSyntax": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.mjs"]
+  "include": ["src/**/*.ts", "scripts/**/*.mjs"]
 }

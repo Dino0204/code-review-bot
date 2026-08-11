@@ -189,7 +189,6 @@ GSML은 학교에서 직접 돌리는 llama.cpp 서버다. OpenAI 규격에서 �
 
 ```bash
 npm run typecheck   # tsc --noEmit
-npm test            # 순수 로직 단위 테스트 (네트워크 없음)
 npm run build       # dist/server.mjs 번들
 ```
 

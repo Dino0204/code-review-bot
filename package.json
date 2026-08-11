@@ -9,8 +9,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "typecheck": "tsc --noEmit"
   },
   "repository": {
     "type": "git",
@@ -27,7 +26,6 @@
   "devDependencies": {
     "@types/node": "^26.1.2",
     "esbuild": "^0.28.1",
-    "tsx": "^4.23.8",
     "typescript": "^7.0.2"
   }
 }
