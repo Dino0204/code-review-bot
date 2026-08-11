@@ -14410,123 +14410,124 @@ var Octokit2 = Octokit.plugin(requestLog, legacyRestEndpointMethods, paginateRes
 );
 
 // src/github/client.ts
-var GitHubClient = class {
-  constructor(token, repo) {
-    this.repo = repo;
-    this.octokit = new Octokit2({ auth: token, userAgent: "gsml-code-review-bot" });
-  }
-  repo;
-  octokit;
-  async getPullRequest(number4) {
-    const { data } = await this.octokit.rest.pulls.get({ ...this.repo, pull_number: number4 });
-    return {
-      number: data.number,
-      title: data.title,
-      body: data.body ?? "",
-      author: data.user?.login ?? "unknown",
-      baseRef: data.base.ref,
-      headRef: data.head.ref,
-      headSha: data.head.sha,
-      baseSha: data.base.sha,
-      draft: Boolean(data.draft),
-      changedFiles: data.changed_files,
-      additions: data.additions,
-      deletions: data.deletions,
-      htmlUrl: data.html_url,
-      labels: data.labels.map((label) => typeof label === "string" ? label : label.name ?? "").filter(Boolean)
-    };
-  }
-  /** PR 전체 diff 원문 */
-  async getPullRequestDiff(number4) {
-    const response = await this.octokit.rest.pulls.get({
-      ...this.repo,
-      pull_number: number4,
-      mediaType: { format: "diff" }
-    });
-    return response.data;
-  }
-  /**
-   * 리포지토리의 파일 하나를 읽는다. 없으면 undefined.
-   * 리포지토리를 체크아웃하지 않고 설정 파일만 가져오는 데 쓴다.
-   */
-  async readFile(path2, ref) {
-    try {
-      const { data } = await this.octokit.rest.repos.getContent({ ...this.repo, path: path2, ref });
-      if (Array.isArray(data) || data.type !== "file" || !data.content) return void 0;
-      return Buffer.from(data.content, "base64").toString("utf8");
-    } catch {
-      return void 0;
-    }
-  }
-  async createIssueComment(number4, body) {
-    const { data } = await this.octokit.rest.issues.createComment({
-      ...this.repo,
-      issue_number: number4,
-      body
-    });
-    return data.id;
-  }
-  /**
-   * 요약 + 인라인 코멘트를 한 번의 리뷰로 등록한다.
-   * 인라인 코멘트 하나라도 위치 검증에 실패하면 GitHub이 리뷰 전체를 422로 거절하므로,
-   * 실패 시 인라인 없이 요약만 다시 등록한다.
-   */
-  async createReview(number4, commitSha, body, comments) {
-    const payload = comments.map((comment) => ({
-      path: comment.path,
-      line: comment.line,
-      side: "RIGHT",
-      ...comment.startLine !== void 0 && comment.startLine < comment.line ? { start_line: comment.startLine, start_side: "RIGHT" } : {},
-      body: comment.body
-    }));
-    try {
-      await this.octokit.rest.pulls.createReview({
-        ...this.repo,
+var RETRIES2 = 2;
+var RetryingOctokit2 = Octokit2.plugin(retry);
+function createGitHubClient(token, repo) {
+  const octokit = new RetryingOctokit2({
+    auth: token,
+    userAgent: "gsml-code-review-bot",
+    retry: { retries: RETRIES2 },
+    // octokit은 실패한 요청마다 영문 한 줄을 console.error로 찍는다(plugin-request-log).
+    // 실패는 우리가 한국어로 정리해 알리고, 설정 파일 404처럼 정상인 실패도 있어서 디버그로 내린다.
+    log: { debug: log.debug, info: log.debug, warn: log.warn, error: log.debug }
+  });
+  const postReview = (number4, commitSha, body, comments) => octokit.rest.pulls.createReview({
+    ...repo,
+    pull_number: number4,
+    commit_id: commitSha,
+    event: "COMMENT",
+    body,
+    ...comments ? { comments } : {}
+  });
+  return {
+    async getPullRequest(number4) {
+      const { data } = await octokit.rest.pulls.get({ ...repo, pull_number: number4 });
+      return {
+        number: data.number,
+        title: data.title,
+        body: data.body ?? "",
+        author: data.user?.login ?? "unknown",
+        baseRef: data.base.ref,
+        headRef: data.head.ref,
+        headSha: data.head.sha,
+        baseSha: data.base.sha,
+        draft: Boolean(data.draft),
+        changedFiles: data.changed_files,
+        additions: data.additions,
+        deletions: data.deletions,
+        htmlUrl: data.html_url,
+        labels: data.labels.map((label) => typeof label === "string" ? label : label.name ?? "").filter(Boolean)
+      };
+    },
+    async getPullRequestDiff(number4) {
+      const response = await octokit.rest.pulls.get({
+        ...repo,
         pull_number: number4,
-        commit_id: commitSha,
-        event: "COMMENT",
-        body,
-        comments: payload
+        mediaType: { format: "diff" }
       });
-      return { posted: payload.length, degraded: false };
-    } catch (error51) {
-      if (payload.length === 0) throw error51;
-      log.warn(`\uC778\uB77C\uC778 \uCF54\uBA58\uD2B8 \uB4F1\uB85D \uC2E4\uD328 \u2014 \uC694\uC57D \uCF54\uBA58\uD2B8\uB85C \uB300\uCCB4\uD55C\uB2E4: ${error51.message}`);
-      await this.octokit.rest.pulls.createReview({
-        ...this.repo,
-        pull_number: number4,
-        commit_id: commitSha,
-        event: "COMMENT",
+      return response.data;
+    },
+    async readFile(path2, ref) {
+      try {
+        const { data } = await octokit.rest.repos.getContent({
+          ...repo,
+          path: path2,
+          ref,
+          // format:raw면 본문이 문자열로 온다 — base64로 받아 직접 푸는 단계가 없어진다
+          mediaType: { format: "raw" }
+        });
+        return data;
+      } catch (error51) {
+        if (error51.status === 404) return void 0;
+        throw error51;
+      }
+    },
+    async createIssueComment(number4, body) {
+      const { data } = await octokit.rest.issues.createComment({
+        ...repo,
+        issue_number: number4,
         body
       });
-      return { posted: 0, degraded: true };
+      return data.id;
+    },
+    /**
+     * 요약 + 인라인 코멘트를 한 번의 리뷰로 등록한다.
+     * 인라인 코멘트 하나라도 위치 검증에 실패하면 GitHub이 리뷰 전체를 422로 거절하므로,
+     * 실패 시 인라인 없이 요약만 다시 등록한다.
+     */
+    async createReview(number4, commitSha, body, comments) {
+      const payload = comments.map((comment) => ({
+        path: comment.path,
+        line: comment.line,
+        side: "RIGHT",
+        ...comment.startLine !== void 0 && comment.startLine < comment.line ? { start_line: comment.startLine, start_side: "RIGHT" } : {},
+        body: comment.body
+      }));
+      try {
+        await postReview(number4, commitSha, body, payload);
+        return { posted: payload.length, degraded: false };
+      } catch (error51) {
+        if (payload.length === 0) throw error51;
+        log.warn(`\uC778\uB77C\uC778 \uCF54\uBA58\uD2B8 \uB4F1\uB85D \uC2E4\uD328 \u2014 \uC694\uC57D \uCF54\uBA58\uD2B8\uB85C \uB300\uCCB4\uD55C\uB2E4: ${error51.message}`);
+        await postReview(number4, commitSha, body);
+        return { posted: 0, degraded: true };
+      }
+    },
+    async addReaction(commentId, content) {
+      try {
+        await octokit.rest.reactions.createForIssueComment({
+          ...repo,
+          comment_id: commentId,
+          content
+        });
+      } catch (error51) {
+        log.debug(`\uB9AC\uC561\uC158 \uB4F1\uB85D \uC2E4\uD328(\uBB34\uC2DC): ${error51.message}`);
+      }
+    },
+    async hasWriteAccess(username) {
+      try {
+        const { data } = await octokit.rest.repos.getCollaboratorPermissionLevel({
+          ...repo,
+          username
+        });
+        return ["admin", "write", "maintain"].includes(data.permission);
+      } catch (error51) {
+        log.warn(`\uAD8C\uD55C \uD655\uC778 \uC2E4\uD328(${username}) \u2014 \uD2B8\uB9AC\uAC70\uB97C \uAC70\uBD80\uD55C\uB2E4: ${error51.message}`);
+        return false;
+      }
     }
-  }
-  async addReaction(commentId, content) {
-    try {
-      await this.octokit.rest.reactions.createForIssueComment({
-        ...this.repo,
-        comment_id: commentId,
-        content
-      });
-    } catch (error51) {
-      log.debug(`\uB9AC\uC561\uC158 \uB4F1\uB85D \uC2E4\uD328(\uBB34\uC2DC): ${error51.message}`);
-    }
-  }
-  /** 아무나 봇을 트리거해 API 쿼터를 태우지 못하도록 쓰기 권한을 확인한다 */
-  async hasWriteAccess(username) {
-    try {
-      const { data } = await this.octokit.rest.repos.getCollaboratorPermissionLevel({
-        ...this.repo,
-        username
-      });
-      return ["admin", "write", "maintain"].includes(data.permission);
-    } catch (error51) {
-      log.warn(`\uAD8C\uD55C \uD655\uC778 \uC2E4\uD328(${username}) \u2014 \uD2B8\uB9AC\uAC70\uB97C \uAC70\uBD80\uD55C\uB2E4: ${error51.message}`);
-      return false;
-    }
-  }
-};
+  };
+}
 
 // src/github/event.ts
 function repoRefFrom(event) {
@@ -31596,7 +31597,7 @@ function shouldReview(trigger, triggerPrefix, autoReview) {
 async function execute(deps, owner, repo, installationId, trigger) {
   const slug = `${owner}/${repo}`;
   const token = await deps.app.installationToken(installationId);
-  const github = new GitHubClient(token, { owner, repo });
+  const github = createGitHubClient(token, { owner, repo });
   const byComment = trigger.kind === "issue_comment" || trigger.kind === "review_comment";
   if (byComment) {
     const trusted = isTrustedAssociation(trigger.association) || await github.hasWriteAccess(trigger.author);

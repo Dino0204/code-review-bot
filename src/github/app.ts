@@ -43,22 +43,11 @@ export function createGitHubApp(credentials: AppCredentials): GitHubApp {
   };
 }
 
-/**
- * plugin-retry가 실제로 재시도했다면 그 횟수. 재시도 없이 한 번에 실패했으면 빈 문자열이다.
- *
- * retryCount는 타입 선언에 없는 필드다 — RequestRequestOptions가 인덱스 시그니처로
- * 열어둔 자리에 plugin-retry가 넣는다. 접근 경로는 plugin-retry README를 따랐다.
- */
-function retriesOf(error: unknown): string {
-  const count = (error as { request?: { request?: { retryCount?: number } } })
-    .request?.request?.retryCount;
+function retriesOf(error: any): string {
+  const count = error.request?.request?.retryCount;
   return count ? `, 재시도 ${count}회` : "";
 }
 
-/**
- * 환경변수로 넘어온 PEM을 되살린다.
- * docker-compose나 .env를 거치면 줄바꿈이 리터럴 `\n` 두 글자로 오는 경우가 흔하다.
- */
 export function normalizePrivateKey(raw: string): string {
   const trimmed = raw.trim();
   return trimmed.includes("\\n") ? trimmed.replace(/\\n/g, "\n") : trimmed;

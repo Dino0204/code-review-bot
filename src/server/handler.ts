@@ -1,7 +1,8 @@
 import { CONFIG_FILES, loadConfig } from '../config'
 import type { BotConfig } from '../config'
 import { LlmClient } from '../llm'
-import { GitHubClient } from '../github/client'
+import { createGitHubClient } from '../github/client'
+import type { GitHubClient } from '../github/client'
 import type { GitHubApp } from '../github/app'
 import { isBotActor, isTrustedAssociation, parseTrigger, repoRefFrom } from '../github/event'
 import type { RawEvent, Trigger } from '../github/event'
@@ -91,7 +92,7 @@ async function execute(
 ): Promise<void> {
   const slug = `${owner}/${repo}`
   const token = await deps.app.installationToken(installationId)
-  const github = new GitHubClient(token, { owner, repo })
+  const github = createGitHubClient(token, { owner, repo })
 
   // 사람이 명시적으로 트리거한 경우에만 권한을 확인한다.
   // 리뷰를 시작하기 전에 한다 — 권한 없는 요청에 API 쿼터를 쓸 이유가 없다.
