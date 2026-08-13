@@ -87,6 +87,59 @@ PR을 열면 자동으로 리뷰가 달리고, 언제든 코멘트로 다시 부
 
 ---
 
+## 자동 배포 (CD)
+
+`main` 에 머지되면 CI가 이미지를 빌드해 GHCR에 밀고, SSH로 서버에 붙어 갈아끼운다.
+서버에서 빌드하지 않으므로 배포가 몇 초로 끝나고, 리뷰 서버가 빌드에 리소스를 뺏기지 않는다.
+
+```
+main 머지 → typecheck · build 통과 → ghcr.io/it-play/code-review-bot:{main,<sha>} 푸시
+          → ssh 서버 → git merge --ff-only → docker compose pull → up -d → healthy 대기
+```
+
+헬스체크가 60초 안에 `healthy` 로 가지 않으면 배포 잡이 실패하고 컨테이너 로그 50줄을 남긴다.
+타입 검사가 깨지면 이미지 빌드까지 가지 않는다.
+
+### 한 번만 해두는 준비
+
+**서버 쪽**
+
+리포지토리가 `git clone` 되어 있고 `.env` · `secrets/app-private-key.pem` 이 채워져 있어야 한다
+(위 "3. 서버 띄우기" 그대로). CD는 이 둘을 건드리지 않는다 — 둘 다 gitignore라 `git merge` 에 쓸려나가지 않는다.
+배포용 공개키를 `~/.ssh/authorized_keys` 에 넣고, 그 계정이 `docker` 를 쓸 수 있어야 한다.
+
+**리포지토리 Secrets** (Settings → Secrets and variables → Actions)
+
+| 이름 | 값 |
+| --- | --- |
+| `DEPLOY_HOST` | 서버 주소 |
+| `DEPLOY_USER` | SSH 계정 |
+| `DEPLOY_SSH_KEY` | 배포용 **개인**키 전문 (`ssh-keygen -t ed25519 -f deploy_key` 로 새로 만든다) |
+| `DEPLOY_KNOWN_HOSTS` | `ssh-keyscan -p <포트> <호스트>` 출력 그대로 |
+
+`DEPLOY_KNOWN_HOSTS` 를 채우는 이유는 중간자 공격을 막기 위해서다. CI가 매번 처음 보는 호스트에
+그냥 붙게 두면, 가로챈 서버에 배포 키를 넘겨줄 수 있다.
+
+**Variables** (같은 화면의 Variables 탭, 선택)
+
+| 이름 | 기본값 | 설명 |
+| --- | --- | --- |
+| `DEPLOY_PORT` | `22` | SSH 포트가 다를 때 |
+| `DEPLOY_PATH` | `Code-Review-Bot` | 서버의 리포지토리 경로 (계정 홈 기준) |
+
+GHCR 인증은 `GITHUB_TOKEN` 으로 매 배포마다 로그인하고 끝나면 로그아웃한다 — 서버에 토큰이 남지 않는다.
+대신 서버에서 수동으로 `docker compose pull` 을 하려면 먼저 `docker login ghcr.io` 를 해야 한다.
+
+### 롤백
+
+이미지에 커밋 SHA 태그가 함께 붙는다. 서버에서:
+
+```bash
+IMAGE_TAG=<되돌릴 커밋 sha> docker compose up -d
+```
+
+---
+
 ## 코멘트 명령
 
 명령은 `/review` 하나뿐이다. PR 코멘트에 이 줄이 있으면 변경된 diff를 리뷰한다.

@@ -4,6 +4,8 @@
 #   3. docker compose up -d --build
 services:
   reviewbot:
+    # main 머지마다 CI가 이 이름으로 밀어넣는다. 로컬에서 고칠 땐 --build 로 덮어쓴다
+    image: ghcr.io/it-play/code-review-bot:${IMAGE_TAG:-main}
     build: .
     restart: unless-stopped
     ports:
