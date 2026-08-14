@@ -23,13 +23,11 @@ gemini-code-assist를 대체하는 것이 목적이며, 리뷰 대상 코드는 
 
 - `src/github/diff.ts` 의 줄 번호 계산 — 여기가 틀리면 인라인 코멘트가 엉뚱한 줄에 붙거나 GitHub이 리뷰 전체를 422로 거절한다.
 - `src/review/runner.ts` 의 `prepareFindings` — 위치 검증과 개수 제한이 여기에 걸려 있다.
-- `src/review/render.ts` 의 `usableSuggestion` — GitHub의 `suggestion` 블록은 "이 코드로 교체" 버튼이라,
-  설명문이 들어가면 누른 사람의 코드가 문장으로 바뀐다.
 
 ## 검증
 
 자동화된 테스트는 없다. `npm run typecheck` 와 `npm run build` 가 CI에서 도는 전부다.
 동작 확인은 서버를 띄우고 테스트 리포지토리에 App을 설치해 실제 PR로 웹훅을 받는 방법뿐이다.
 
-그래서 위 "건드릴 때 주의할 곳" 세 군데는 고친 뒤 반드시 작은 PR로 직접 확인해야 한다 —
+그래서 위 "건드릴 때 주의할 곳" 두 군데는 고친 뒤 반드시 작은 PR로 직접 확인해야 한다 —
 줄 번호가 틀리면 타입 검사는 통과하고 GitHub이 422로 거절한다.

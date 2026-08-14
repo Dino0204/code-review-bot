@@ -94,7 +94,6 @@ async function execute(
     const trusted = isTrustedAssociation(trigger.association) || (await github.hasWriteAccess(trigger.author))
     if (!trusted) {
       log.warn(`${slug}: ${trigger.author}(${trigger.association})에게 쓰기 권한이 없어 명령을 무시한다`)
-      await github.addReaction(trigger.commentId, 'confused')
       return
     }
   }
@@ -120,7 +119,7 @@ async function execute(
 
   try {
     const outcome = await runReview(runnerDeps, pr)
-    log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건, 판정 ${outcome.verdict}`)
+    log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건`)
   } catch (error) {
     // 실패 사실을 PR에서 바로 볼 수 있게 남긴다
     const message = error instanceof Error ? error.message : String(error)

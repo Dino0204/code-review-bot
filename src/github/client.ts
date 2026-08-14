@@ -27,7 +27,7 @@ export interface InlineComment {
   body: string
 }
 
-export type Reaction = 'eyes' | '+1' | 'confused' | 'rocket'
+export type Reaction = 'eyes' | '+1' | 'rocket'
 
 export interface GitHubClient {
   getPullRequest(number: number): Promise<PullRequestInfo>

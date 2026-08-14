@@ -32,8 +32,6 @@ export interface BotConfig {
   minSeverity: Severity
   /** 인라인 코멘트 최대 개수 */
   maxInlineComments: number
-  /** 낮은 확신도의 지적은 버림 (0~1) */
-  minConfidence: number
 
   /** 코멘트 트리거 접두사 */
   triggerPrefix: string
@@ -89,7 +87,6 @@ export const DEFAULT_CONFIG: BotConfig = {
   autoReview: true,
   minSeverity: 'minor',
   maxInlineComments: 25,
-  minConfidence: 0.5,
 
   triggerPrefix: '/review',
 
@@ -122,7 +119,6 @@ function pickFileConfig(raw: unknown): Partial<BotConfig> {
     'maxFiles',
     'maxFileChars',
     'maxInlineComments',
-    'minConfidence',
   ] as const
   for (const key of numbers) {
     if (typeof r[key] === 'number' && Number.isFinite(r[key])) out[key] = r[key] as number

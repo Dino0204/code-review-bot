@@ -3,7 +3,6 @@ import type { BotConfig } from '../config'
 import type { PullRequestInfo } from '../github/client'
 import type { DiffFile } from '../github/diff'
 import { renderFileDiff } from '../github/diff'
-import { CATEGORIES } from './schema'
 import { SEVERITIES } from '../config'
 
 export interface ReviewContext {
@@ -38,7 +37,9 @@ export function buildSystemPrompt(config: BotConfig): string {
     '2. 근거 없는 추측을 쓰지 않는다. 주어진 코드에서 확인 가능한 사실만 근거로 삼는다.',
     '3. 실제로 동작이 깨지거나 유지보수를 해치는 문제를 우선한다. 취향 차이나 사소한 포맷은 리뷰하지 않는다.',
     '4. 같은 문제를 여러 줄에 걸쳐 반복해서 지적하지 않는다. 대표 위치 한 곳에만 남긴다.',
-    '5. 확신이 없으면 confidence를 낮게 준다. 0.5 미만이면 아예 보고하지 않는다.',
+    '5. 확신이 서지 않는 지적은 단정하지 말고 확인을 요청하는 어투로 쓴다. 확실한 문제만 단정해서 쓴다.',
+    '   - ✗ "user가 null이라 여기서 터진다"  ← 근거가 부족한데 단정',
+    '   - ✓ "user가 null인 경로가 있어 보이는데, 의도한 동작인지 확인해주세요"',
     '',
     '## 심각도',
     '- critical: 데이터 손실, 보안 취약점, 프로덕션 장애로 직결되는 결함',
@@ -65,25 +66,22 @@ export function buildSystemPrompt(config: BotConfig): string {
     '```json',
     '{',
     '  "summary": "변경 내용 요약과 전반적인 평가 (마크다운, 3~6줄)",',
-    `  "verdict": "approve | comment | request_changes",`,
     '  "findings": [',
     '    {',
     '      "file": "리포지토리 루트 기준 경로",',
     '      "line": 42,',
     '      "end_line": 45,',
     `      "severity": "${SEVERITIES.join(' | ')}",`,
-    `      "category": "${CATEGORIES.join(' | ')}",`,
     '      "title": "한 줄 요약",',
     '      "detail": "왜 문제인지와 어떻게 고칠지 (마크다운 허용)",',
-    '      "suggestion": "대체 코드 또는 생략",',
-    '      "confidence": 0.0',
+    '      "suggestion": "대체 코드 또는 생략"',
     '    }',
     '  ]',
     '}',
     '```',
     '',
     `title, detail, summary는 ${languageName(config.language)}로 작성한다. 코드/식별자/에러 메시지는 원문 그대로 둔다.`,
-    '지적할 것이 없으면 findings를 빈 배열로 두고 verdict는 approve로 한다.',
+    '지적할 것이 없으면 findings를 빈 배열로 둔다.',
   ].join('\n')
 }
 
