@@ -30,13 +30,6 @@ function privateKey(): string {
   return required('GITHUB_APP_PRIVATE_KEY')
 }
 
-function allowedRepos(): string[] {
-  return (process.env['REVIEWBOT_ALLOWED_REPOS'] ?? '')
-    .split(',')
-    .map((slug) => slug.trim())
-    .filter(Boolean)
-}
-
 function main(): void {
   const webhookSecret = required('GITHUB_WEBHOOK_SECRET')
   const gsmlApiKey = required('GSML_API_KEY')
@@ -44,7 +37,6 @@ function main(): void {
   const deps: HandlerDeps = {
     app: createGitHubApp({ appId: required('GITHUB_APP_ID'), privateKey: privateKey() }),
     gsmlApiKey,
-    allowedRepos: allowedRepos(),
   }
 
   const queue = new ReviewQueue()
@@ -58,8 +50,7 @@ function main(): void {
   })
 
   server.listen(port, () => {
-    const scope = deps.allowedRepos.length ? deps.allowedRepos.join(', ') : '(설치된 모든 리포지토리)'
-    log.info(`웹훅 서버 시작 — 포트 ${port} / 허용 대상: ${scope}`)
+    log.info(`웹훅 서버 시작 — 포트 ${port}`)
   })
 
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {

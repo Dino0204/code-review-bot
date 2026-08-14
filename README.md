@@ -20,7 +20,7 @@ GSML 게이트웨이의 모델로 GitHub Pull Request를 리뷰하고, 결과를
 키에는 만료일이 있고, 만료되면 리뷰가 401로 실패하므로 콘솔에서 연장하거나 재발급한다.
 
 리뷰는 **서버에 넣은 키 하나**로 전부 처리된다. App을 여러 리포지토리에 설치해도
-할당량은 그 키 하나에서 나가므로, 의도치 않은 소모를 막으려면 아래 `REVIEWBOT_ALLOWED_REPOS` 를 채운다.
+할당량은 그 키 하나에서 나가므로, App 설치 범위를 필요한 리포지토리로만 좁혀두는 편이 좋다.
 
 ### 2. GitHub App 만들기
 
@@ -51,7 +51,6 @@ cat > .env <<'EOF'
 GSML_API_KEY=...
 GITHUB_APP_ID=123456
 GITHUB_WEBHOOK_SECRET=...
-REVIEWBOT_ALLOWED_REPOS=it-play/Code-Review-Bot
 EOF
 
 docker compose up -d --build
@@ -65,7 +64,6 @@ curl http://localhost:3000/health   # {"ok":true,"queued":0,"active":null}
 | `GITHUB_WEBHOOK_SECRET` | ✅ | App에 설정한 웹훅 시크릿과 같아야 한다 |
 | `GITHUB_APP_PRIVATE_KEY_PATH` | ✅* | `.pem` 파일 경로 (compose가 마운트한다) |
 | `GITHUB_APP_PRIVATE_KEY` | ✅* | 경로 대신 PEM 내용을 직접 줄 때 |
-| `REVIEWBOT_ALLOWED_REPOS` | | `owner/repo` 쉼표 구분. 비우면 설치된 모든 리포지토리를 리뷰한다 |
 | `REVIEWBOT_BASE_URL` | | 모델 서버 주소. 같은 호스트면 `http://localhost:26145/v1` 로 두는 게 좋다 |
 | `PORT` | | 기본 3000 |
 

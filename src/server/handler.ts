@@ -15,8 +15,6 @@ import { log } from '../logger'
 export interface HandlerDeps {
   app: GitHubApp
   gsmlApiKey: string
-  /** 비어 있으면 App이 설치된 모든 리포지토리를 허용한다 */
-  allowedRepos: string[]
 }
 
 export interface AcceptedEvent {
@@ -48,11 +46,6 @@ export function accept(deps: HandlerDeps, eventName: string, payload: RawEvent):
   }
 
   const slug = `${repo.owner}/${repo.repo}`
-  if (deps.allowedRepos.length > 0 && !deps.allowedRepos.includes(slug)) {
-    log.warn(`${slug}: 허용 목록에 없어 무시한다`)
-    return undefined
-  }
-
   if (trigger.kind !== 'pull_request' && isBotActor(trigger.author)) {
     log.debug(`${slug}: 봇(${trigger.author})의 코멘트라 무시한다`)
     return undefined

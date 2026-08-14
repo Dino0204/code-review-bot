@@ -16,8 +16,6 @@ services:
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:?GITHUB_WEBHOOK_SECRET이 필요하다}
       # 개인키는 값이 길고 줄바꿈이 깨지기 쉬워 파일로 마운트한다
       GITHUB_APP_PRIVATE_KEY_PATH: /run/secrets/app-private-key.pem
-      # 비워두면 App이 설치된 모든 리포지토리를 리뷰한다. 키 할당량을 지키려면 채운다.
-      REVIEWBOT_ALLOWED_REPOS: ${REVIEWBOT_ALLOWED_REPOS:-}
       # 같은 호스트에서 모델을 돌린다면 localhost로 바꾼다 — 키가 네트워크를 안 건넌다
       REVIEWBOT_BASE_URL: ${REVIEWBOT_BASE_URL:-http://ssh.gsmsv.site:26145/v1}
       REVIEWBOT_DEBUG: ${REVIEWBOT_DEBUG:-}
