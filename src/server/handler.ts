@@ -1,4 +1,4 @@
-import { CONFIG_FILES, loadConfig } from '../config'
+import { CONFIG_FILES, INSTRUCTION_FILES, loadConfig } from '../config'
 import type { BotConfig } from '../config'
 import { LlmClient } from '../llm'
 import { createGitHubClient } from '../github/client'
@@ -9,6 +9,7 @@ import type { RawEvent, Trigger } from '../github/event'
 import { hasReviewTrigger } from '../review/commands'
 import { runReview } from '../review/runner'
 import type { RunnerDeps } from '../review/runner'
+import type { RepoInstructions } from '../review/prompt'
 import { renderError } from '../review/render'
 import { log } from '../logger'
 
@@ -94,7 +95,6 @@ async function execute(
     const trusted = isTrustedAssociation(trigger.association) || (await github.hasWriteAccess(trigger.author))
     if (!trusted) {
       log.warn(`${slug}: ${trigger.author}(${trigger.association})에게 쓰기 권한이 없어 명령을 무시한다`)
-      await github.addReaction(trigger.commentId, 'confused')
       return
     }
   }
@@ -111,16 +111,19 @@ async function execute(
 
   log.info(`${slug}#${pr.number} "${pr.title}" 리뷰 시작`)
 
+  // 리뷰를 돌리기로 정한 뒤에 읽는다 — 무시할 이벤트에 API 쿼터를 쓰지 않는다
+  const instructions = await loadRepoInstructions(github, pr.headSha)
+
   const llm = new LlmClient({
     apiKey: deps.gsmlApiKey,
     baseUrl: config.baseUrl,
     model: config.model,
   })
-  const runnerDeps: RunnerDeps = { github, llm, config }
+  const runnerDeps: RunnerDeps = { github, llm, config, instructions }
 
   try {
     const outcome = await runReview(runnerDeps, pr)
-    log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건, 판정 ${outcome.verdict}`)
+    log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건`)
   } catch (error) {
     // 실패 사실을 PR에서 바로 볼 수 있게 남긴다
     const message = error instanceof Error ? error.message : String(error)
@@ -142,4 +145,22 @@ async function loadRepoConfig(github: GitHubClient, ref: string): Promise<BotCon
     }
   }
   return loadConfig()
+}
+
+/**
+ * 리포지토리의 코딩 지침 문서를 API로 읽는다. 후보 중 먼저 발견된 하나만 쓴다.
+ *
+ * 설정 파일과 같은 ref(PR의 head)에서 읽는다 — 지침을 고치는 PR에서 새 지침이
+ * 그 PR 리뷰에 바로 반영된다.
+ */
+async function loadRepoInstructions(github: GitHubClient, ref: string): Promise<RepoInstructions | undefined> {
+  for (const candidate of INSTRUCTION_FILES) {
+    const raw = await github.readFile(candidate, ref)
+    if (raw?.trim()) {
+      log.info(`리포지토리 지침 로드: ${candidate} (${raw.length}자)`)
+      return { path: candidate, content: raw }
+    }
+  }
+  log.debug(`리포지토리 지침 없음 (${INSTRUCTION_FILES.join(', ')})`)
+  return undefined
 }

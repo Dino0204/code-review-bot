@@ -7,8 +7,8 @@ import type { GitHubClient, InlineComment, PullRequestInfo } from '../github/cli
 import type { DiffFile } from '../github/diff'
 import { parseUnifiedDiff, renderFileDiff, snapToCommentableLine } from '../github/diff'
 import { buildReviewMessages } from './prompt'
-import type { ReviewContext } from './prompt'
-import { reviewResultSchema, normalizeCategory } from './schema'
+import type { RepoInstructions, ReviewContext } from './prompt'
+import { reviewResultSchema } from './schema'
 import type { Finding, ReviewResult } from './schema'
 import { renderFindingComment, renderPlainComment, renderReviewSummary } from './render'
 import { log } from '../logger'
@@ -17,6 +17,8 @@ export interface RunnerDeps {
   github: GitHubClient
   llm: LlmClient
   config: BotConfig
+  /** 리포지토리 지침 문서. 없는 리포지토리도 있으므로 선택 사항이다 */
+  instructions?: RepoInstructions
 }
 
 interface GatheredContext {
@@ -26,7 +28,7 @@ interface GatheredContext {
 
 /** PR diff를 받아 리뷰 대상 파일만 추린다 */
 async function gatherContext(deps: RunnerDeps, pr: PullRequestInfo): Promise<GatheredContext> {
-  const { github, config } = deps
+  const { github, config, instructions } = deps
 
   const rawDiff = await github.getPullRequestDiff(pr.number)
   const allFiles = parseUnifiedDiff(rawDiff)
@@ -34,7 +36,7 @@ async function gatherContext(deps: RunnerDeps, pr: PullRequestInfo): Promise<Gat
   log.info(`diff 파일 ${allFiles.length}개 중 ${selected.length}개 리뷰 대상 (${skipped}개 제외)`)
 
   return {
-    context: { config, pr, diffFiles: selected },
+    context: { config, pr, diffFiles: selected, instructions },
     skippedFiles: skipped,
   }
 }
@@ -54,9 +56,14 @@ export function filterFiles(files: DiffFile[], config: BotConfig): { selected: D
   return { selected, skipped: files.length - selected.length }
 }
 
-/** diff가 프롬프트 예산을 넘으면 파일 단위로 쪼갠다. */
-export function chunkFiles(files: DiffFile[], config: BotConfig): DiffFile[][] {
-  const diffBudget = Math.floor(config.maxPromptChars * 0.5)
+/**
+ * diff가 프롬프트 예산을 넘으면 파일 단위로 쪼갠다.
+ *
+ * 지침 문서는 청크마다 다시 실리므로 그 길이를 청크 예산에서 미리 뺀다.
+ * 다만 파일 하나는 언제나 담을 수 있어야 하므로 maxFileChars를 하한으로 둔다.
+ */
+export function chunkFiles(files: DiffFile[], config: BotConfig, instructionChars = 0): DiffFile[][] {
+  const diffBudget = Math.max(Math.floor(config.maxPromptChars * 0.5) - instructionChars, config.maxFileChars)
   const chunks: DiffFile[][] = []
   let current: DiffFile[] = []
   let size = 0
@@ -79,7 +86,6 @@ export interface ReviewOutcome {
   posted: boolean
   findings: number
   inline: number
-  verdict: ReviewResult['verdict']
 }
 
 export async function runReview(deps: RunnerDeps, pr: PullRequestInfo): Promise<ReviewOutcome> {
@@ -93,10 +99,10 @@ export async function runReview(deps: RunnerDeps, pr: PullRequestInfo): Promise<
         model: llm.model,
       }),
     )
-    return { posted: true, findings: 0, inline: 0, verdict: 'approve' }
+    return { posted: true, findings: 0, inline: 0 }
   }
 
-  const chunks = chunkFiles(context.diffFiles, config)
+  const chunks = chunkFiles(context.diffFiles, config, context.instructions?.content.length ?? 0)
   log.info(`리뷰 청크 ${chunks.length}개`)
 
   const results: ReviewResult[] = []
@@ -138,7 +144,6 @@ export async function runReview(deps: RunnerDeps, pr: PullRequestInfo): Promise<
     posted: true,
     findings: inline.length + overflow.length,
     inline: posted,
-    verdict: merged.verdict,
   }
 }
 
@@ -160,7 +165,6 @@ async function requestReview(llm: LlmClient, context: ReviewContext, config: Bot
     return {
       summary: `_(구조화된 형식으로 파싱하지 못해 모델 원문을 그대로 싣는다)_\n\n${error.rawContent.trim()}`,
       findings: [],
-      verdict: 'comment',
     }
   }
 }
@@ -168,18 +172,12 @@ async function requestReview(llm: LlmClient, context: ReviewContext, config: Bot
 function mergeResults(results: ReviewResult[]): ReviewResult {
   if (results.length === 1) return results[0]!
 
-  const verdictRank = { request_changes: 0, comment: 1, approve: 2 } as const
-  const verdict = results
-    .map((result) => result.verdict)
-    .sort((a, b) => verdictRank[a] - verdictRank[b])[0] as ReviewResult['verdict']
-
   return {
     summary: results
       .map((result) => result.summary.trim())
       .filter(Boolean)
       .join('\n\n'),
     findings: results.flatMap((result) => result.findings),
-    verdict: verdict ?? 'comment',
   }
 }
 
@@ -187,7 +185,7 @@ function mergeResults(results: ReviewResult[]): ReviewResult {
  * 모델이 뱉은 지적을 실제 게시 가능한 형태로 정제한다.
  * - 파일 경로를 diff에 존재하는 경로로 해석
  * - 줄 번호를 diff 안의 유효한 위치로 스냅
- * - 심각도/확신도 임계값 적용, 중복 제거, 개수 제한
+ * - 심각도 임계값 적용, 중복 제거, 개수 제한
  */
 export function prepareFindings(
   result: ReviewResult,
@@ -200,7 +198,6 @@ export function prepareFindings(
 
   for (const raw of result.findings) {
     if (!meetsSeverity(raw.severity, config.minSeverity)) continue
-    if (raw.confidence < config.minConfidence) continue
 
     const file = resolveFile(raw.file, files)
     if (!file) {
@@ -218,11 +215,9 @@ export function prepareFindings(
       line: line ?? (hasLine ? raw.line : 1),
       endLine: endLine ?? undefined,
       severity: raw.severity,
-      category: normalizeCategory(raw.category),
       title: raw.title.trim(),
       detail: raw.detail.trim(),
       suggestion: raw.suggestion?.trim() || undefined,
-      confidence: raw.confidence,
       inlineDropped: line === undefined,
     }
 
@@ -232,9 +227,7 @@ export function prepareFindings(
     candidates.push(finding)
   }
 
-  candidates.sort(
-    (a, b) => severityOrder[a.severity] - severityOrder[b.severity] || b.confidence - a.confidence,
-  )
+  candidates.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity])
 
   const inline: Finding[] = []
   const overflow: Finding[] = []

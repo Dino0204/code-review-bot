@@ -1,6 +1,6 @@
 import type { BotConfig } from '../config'
 import type { Finding, ReviewResult } from './schema'
-import { SEVERITY_LABEL, VERDICT_LABEL } from './schema'
+import { SEVERITY_LABEL } from './schema'
 
 export const BOT_MARKER = '<!-- glm-code-review-bot -->'
 
@@ -16,25 +16,16 @@ export interface ReviewMeta {
 export function renderFindingComment(finding: Finding): string {
   const parts = [
     BOT_MARKER,
-    `**${SEVERITY_LABEL[finding.severity]} · ${finding.category}** — ${finding.title}`,
+    `**${SEVERITY_LABEL[finding.severity]}** — ${finding.title}`,
     '',
     finding.detail.trim(),
   ]
 
-  const suggestion = usableSuggestion(finding)
-  if (suggestion) {
-    parts.push('', '```suggestion', suggestion, '```')
-  } else if (finding.suggestion?.trim()) {
-    const raw = stripFence(finding.suggestion)
-    if (looksLikeCode(raw)) {
-      parts.push('', '**제안** (직접 적용해야 한다):', '```', raw.replace(/^\n+/, ''), '```')
-    } else {
-      parts.push('', `**제안:** ${raw.trim().replace(/\s*\n+\s*/g, ' ')}`)
-    }
-  }
-
-  if (finding.confidence < 0.7) {
-    parts.push('', `<sub>확신도 ${Math.round(finding.confidence * 100)}% — 오탐일 수 있다.</sub>`)
+  const code = finding.suggestion ? stripFence(finding.suggestion).replace(/^\n+/, '') : ''
+  if (code.trim()) {
+    // 코드 안의 백틱보다 긴 펜스를 써야 블록이 중간에 끊기지 않는다
+    const fence = '`'.repeat(Math.max(3, longestBacktickRun(code) + 1))
+    parts.push('', `${fence}suggestion`, code, fence)
   }
 
   return parts.join('\n')
@@ -45,31 +36,10 @@ export function stripFence(code: string): string {
   return (match?.[1] ?? code).replace(/\s+$/, '')
 }
 
-const KOREAN_SENTENCE_END = /(합니다|하세요|해야\s|입니다|세요|십시오|같습니다|필요합니다)/
-const PROSE_LEAD = /^\s*(?:[-*]\s*)?[가-힣]/
-
-export function looksLikeCode(text: string): boolean {
-  const trimmed = text.trim()
-  if (!trimmed) return false
-  if (KOREAN_SENTENCE_END.test(trimmed)) return false
-  if (PROSE_LEAD.test(trimmed)) return false
-  return trimmed.includes('\n') || /[{};=()]/.test(trimmed)
-}
-
-export function usableSuggestion(finding: Finding): string | undefined {
-  const raw = finding.suggestion
-  if (!raw?.trim()) return undefined
-
-  if (finding.endLine !== undefined && finding.endLine !== finding.line) return undefined
-
-  const code = stripFence(raw)
-  if (!code.trim()) return undefined
-
-  if (code.includes('`')) return undefined
-  if (KOREAN_SENTENCE_END.test(code)) return undefined
-  if (PROSE_LEAD.test(code)) return undefined
-
-  return code
+function longestBacktickRun(text: string): number {
+  let longest = 0
+  for (const match of text.matchAll(/`+/g)) longest = Math.max(longest, match[0].length)
+  return longest
 }
 
 export function renderReviewSummary(
@@ -91,7 +61,7 @@ export function renderReviewSummary(
 
   const parts = [
     BOT_MARKER,
-    `## 🤖 코드 리뷰 — ${VERDICT_LABEL[result.verdict]}`,
+    '## 🤖 코드 리뷰',
     '',
     result.summary.trim() || '_요약을 생성하지 못했다._',
     '',
@@ -121,7 +91,7 @@ export function renderReviewSummary(
     .filter(Boolean)
     .join(' · ')
 
-  parts.push('', '---', `<sub>${stats}</sub>`, `<sub>\`${config.triggerPrefix} help\` 로 사용법을 볼 수 있다.</sub>`)
+  parts.push('', '---', `<sub>${stats}</sub>`)
 
   return parts.join('\n')
 }
