@@ -7,7 +7,7 @@ import type { GitHubClient, InlineComment, PullRequestInfo } from '../github/cli
 import type { DiffFile } from '../github/diff'
 import { parseUnifiedDiff, renderFileDiff, snapToCommentableLine } from '../github/diff'
 import { buildReviewMessages } from './prompt'
-import type { ReviewContext } from './prompt'
+import type { RepoInstructions, ReviewContext } from './prompt'
 import { reviewResultSchema } from './schema'
 import type { Finding, ReviewResult } from './schema'
 import { renderFindingComment, renderPlainComment, renderReviewSummary } from './render'
@@ -17,6 +17,8 @@ export interface RunnerDeps {
   github: GitHubClient
   llm: LlmClient
   config: BotConfig
+  /** 리포지토리 지침 문서. 없는 리포지토리도 있으므로 선택 사항이다 */
+  instructions?: RepoInstructions
 }
 
 interface GatheredContext {
@@ -26,7 +28,7 @@ interface GatheredContext {
 
 /** PR diff를 받아 리뷰 대상 파일만 추린다 */
 async function gatherContext(deps: RunnerDeps, pr: PullRequestInfo): Promise<GatheredContext> {
-  const { github, config } = deps
+  const { github, config, instructions } = deps
 
   const rawDiff = await github.getPullRequestDiff(pr.number)
   const allFiles = parseUnifiedDiff(rawDiff)
@@ -34,7 +36,7 @@ async function gatherContext(deps: RunnerDeps, pr: PullRequestInfo): Promise<Gat
   log.info(`diff 파일 ${allFiles.length}개 중 ${selected.length}개 리뷰 대상 (${skipped}개 제외)`)
 
   return {
-    context: { config, pr, diffFiles: selected },
+    context: { config, pr, diffFiles: selected, instructions },
     skippedFiles: skipped,
   }
 }
@@ -54,9 +56,14 @@ export function filterFiles(files: DiffFile[], config: BotConfig): { selected: D
   return { selected, skipped: files.length - selected.length }
 }
 
-/** diff가 프롬프트 예산을 넘으면 파일 단위로 쪼갠다. */
-export function chunkFiles(files: DiffFile[], config: BotConfig): DiffFile[][] {
-  const diffBudget = Math.floor(config.maxPromptChars * 0.5)
+/**
+ * diff가 프롬프트 예산을 넘으면 파일 단위로 쪼갠다.
+ *
+ * 지침 문서는 청크마다 다시 실리므로 그 길이를 청크 예산에서 미리 뺀다.
+ * 다만 파일 하나는 언제나 담을 수 있어야 하므로 maxFileChars를 하한으로 둔다.
+ */
+export function chunkFiles(files: DiffFile[], config: BotConfig, instructionChars = 0): DiffFile[][] {
+  const diffBudget = Math.max(Math.floor(config.maxPromptChars * 0.5) - instructionChars, config.maxFileChars)
   const chunks: DiffFile[][] = []
   let current: DiffFile[] = []
   let size = 0
@@ -95,7 +102,7 @@ export async function runReview(deps: RunnerDeps, pr: PullRequestInfo): Promise<
     return { posted: true, findings: 0, inline: 0 }
   }
 
-  const chunks = chunkFiles(context.diffFiles, config)
+  const chunks = chunkFiles(context.diffFiles, config, context.instructions?.content.length ?? 0)
   log.info(`리뷰 청크 ${chunks.length}개`)
 
   const results: ReviewResult[] = []

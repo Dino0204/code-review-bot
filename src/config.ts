@@ -35,10 +35,6 @@ export interface BotConfig {
 
   /** 코멘트 트리거 접두사 */
   triggerPrefix: string
-
-
-  /** 리포지토리별 추가 리뷰 지침 */
-  customInstructions: string
 }
 
 export const DEFAULT_CONFIG: BotConfig = {
@@ -89,13 +85,18 @@ export const DEFAULT_CONFIG: BotConfig = {
   maxInlineComments: 25,
 
   triggerPrefix: '/review',
-
-
-  customInstructions: '',
 }
 
 /** 리포지토리 루트의 설정 파일 후보 (먼저 발견된 것 하나만 사용) */
 export const CONFIG_FILES = ['.reviewbot/config.yml', '.reviewbot/config.yaml', '.reviewbot.yml', '.reviewbot.yaml']
+
+/**
+ * 리포지토리 루트의 코딩 지침 문서 후보 (먼저 발견된 것 하나만 사용).
+ *
+ * 사람과 다른 코딩 에이전트가 이미 쓰고 있는 문서를 그대로 리뷰 기준으로 삼는다 —
+ * 리뷰 전용 지침을 따로 관리하면 둘이 어긋난다.
+ */
+export const INSTRUCTION_FILES = ['AGENTS.md', 'CLAUDE.md']
 
 function coerceStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined
@@ -107,7 +108,7 @@ function pickFileConfig(raw: unknown): Partial<BotConfig> {
   const r = raw as Record<string, unknown>
   const out: Partial<BotConfig> = {}
 
-  const strings = ['model', 'baseUrl', 'language', 'triggerPrefix', 'customInstructions'] as const
+  const strings = ['model', 'baseUrl', 'language', 'triggerPrefix'] as const
   for (const key of strings) {
     if (typeof r[key] === 'string') out[key] = r[key] as string
   }
@@ -153,7 +154,6 @@ function envOverrides(): Partial<BotConfig> {
     const n = Number(env['REVIEWBOT_MAX_FILES'])
     if (Number.isFinite(n)) out.maxFiles = n
   }
-  if (env['REVIEWBOT_INSTRUCTIONS']) out.customInstructions = env['REVIEWBOT_INSTRUCTIONS']
   return out
 }
 
