@@ -18,6 +18,13 @@ overrides:
   claude/agents/kotlin-convention-validator: false
   claude/agents/kotlin-test-fixer: false
 
+  # Next.js/FSD 프론트엔드 전용 스킬 — 이 프로젝트는 프론트엔드가 없는 웹훅 서버다
+  claude/skills/nextjs-fsd-architecture: false
+  claude/skills/nextjs-turborepo-fsd: false
+  claude/skills/nextjs-package-boundaries: false
+  claude/skills/tailwind-shadcn: false
+  claude/skills/tanstack-query-zod: false
+
   # 훅은 opt-in — dispatcher 와 settings 는 필수
   claude/hooks/dispatcher: true
   claude/settings: true
