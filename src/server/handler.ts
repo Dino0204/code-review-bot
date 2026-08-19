@@ -25,7 +25,8 @@ export interface AcceptedEvent {
   run: () => Promise<void>
 }
 
-const PR_ACTIONS = ['opened', 'reopened', 'synchronize', 'ready_for_review']
+/** 자동 리뷰를 돌릴 PR 액션. 최초 생성 시점만 본다 — 푸시(synchronize)마다 다시 돌리지 않는다. */
+const AUTO_REVIEW_PR_ACTIONS = ['opened']
 
 /**
  * 웹훅 이벤트가 리뷰를 돌릴 가치가 있는지 판단한다.
@@ -61,7 +62,7 @@ export function accept(deps: HandlerDeps, eventName: string, payload: RawEvent):
   } else if (trigger.kind === 'review_comment') {
     if (!trigger.body.trimStart().startsWith('/') && !hasMention(trigger.body, BOT_MENTION)) return undefined
   } else if (trigger.kind === 'pull_request') {
-    if (trigger.draft || !PR_ACTIONS.includes(trigger.action)) return undefined
+    if (trigger.draft || !AUTO_REVIEW_PR_ACTIONS.includes(trigger.action)) return undefined
   }
 
   return {
