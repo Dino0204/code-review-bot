@@ -1,15 +1,14 @@
 import { minimatch } from 'minimatch'
 import type { BotConfig } from '../config'
 import { meetsSeverity } from '../config'
-import { LlmError } from '../llm'
-import type { LlmClient } from '../llm'
+import type { LlmClient, ToolCall } from '../llm'
 import type { GitHubClient, InlineComment, PullRequestInfo } from '../github/client'
 import type { DiffFile } from '../github/diff'
 import { parseUnifiedDiff, renderFileDiff, snapToCommentableLine } from '../github/diff'
-import { buildReviewMessages } from './prompt'
+import { FINDING_TOOL, SUMMARY_TOOL, buildReviewMessages, reviewTools } from './prompt'
 import type { RepoInstructions, ReviewContext } from './prompt'
-import { reviewResultSchema } from './schema'
-import type { Finding, ReviewResult } from './schema'
+import { findingSchema } from './schema'
+import type { Finding, RawFinding, ReviewResult } from './schema'
 import { renderFindingComment, renderPlainComment, renderReviewSummary } from './render'
 import { log } from '../logger'
 
@@ -148,25 +147,79 @@ export async function runReview(deps: RunnerDeps, pr: PullRequestInfo): Promise<
 }
 
 /**
- * 모델 응답을 구조화된 JSON으로 받는다. GSML 서버 자체의 규격 위반(네트워크 오류,
- * 빈 응답, HTTP 오류 등)은 그대로 던져 실패시키지만, JSON 추출/스키마 검증 실패는
- * 우리 쪽 파싱 로직의 한계일 뿐 모델이 리뷰 자체는 만들어냈을 수 있다 — 원문을
- * 요약으로 대신 실어서 인라인 코멘트 없이도 리뷰가 통째로 사라지지 않게 한다.
+ * 모델에게 도구를 제시해 리뷰 결과를 받는다.
+ *
+ * 도구 주입은 그래머 강제가 아니라 프롬프트 기반이므로 모델이 도구를 아예 안 부를 수 있다.
+ * 그 경우 한 번 더 시도하고, 그래도 못 받으면 모델이 쓴 본문을 요약으로 대신 실어
+ * 인라인 코멘트 없이도 리뷰가 통째로 사라지지 않게 한다.
  */
 async function requestReview(llm: LlmClient, context: ReviewContext, config: BotConfig): Promise<ReviewResult> {
-  try {
-    return await llm.chatJson(buildReviewMessages(context), reviewResultSchema, {
-      temperature: config.temperature,
-      maxTokens: config.maxOutputTokens,
-    })
-  } catch (error) {
-    if (!(error instanceof LlmError) || error.rawContent === undefined) throw error
-    log.warn(`구조화된 JSON으로 파싱하지 못해 원문을 요약으로 대신 싣는다 — ${error.message}`)
-    return {
-      summary: `_(구조화된 형식으로 파싱하지 못해 모델 원문을 그대로 싣는다)_\n\n${error.rawContent.trim()}`,
-      findings: [],
-    }
+  const messages = buildReviewMessages(context)
+  const tools = reviewTools(config)
+  const options = { temperature: config.temperature, maxTokens: config.maxOutputTokens }
+
+  let lastText = ''
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    // 재시도는 같은 프롬프트를 그대로 다시 보내는 대신 무엇이 잘못됐는지 알려준다.
+    const attemptMessages =
+      attempt === 1 ? messages : [...messages, { role: 'user' as const, content: retryNudge() }]
+
+    const { toolCalls, text } = await llm.chatWithTools(attemptMessages, tools, options)
+    if (toolCalls.length > 0) return collectToolCalls(toolCalls)
+
+    lastText = text
+    log.warn(`모델이 도구를 호출하지 않았다 (${attempt}/2)`)
   }
+
+  return {
+    summary: `_(모델이 도구를 호출하지 않아 본문을 그대로 싣는다 — 인라인 코멘트는 없다)_\n\n${lastText}`,
+    findings: [],
+  }
+}
+
+/** 도구를 부르지 않은 응답에 붙이는 교정 지시. 형식은 도구 블록에 이미 있으므로 되풀이하지 않는다. */
+function retryNudge(): string {
+  return [
+    '방금 응답에는 도구 호출이 없었다. 본문만 쓴 응답은 전달되지 않고 버려진다.',
+    `같은 리뷰를 ${SUMMARY_TOOL} 호출 한 번과, 지적마다 ${FINDING_TOOL} 호출로 다시 제출하라.`,
+    '<tool_call> 블록 밖에는 아무것도 쓰지 마라.',
+  ].join('\n')
+}
+
+/**
+ * 도구 호출을 리뷰 결과로 모은다.
+ *
+ * 모델 출력은 신뢰하지 않는다 — 스키마에 맞지 않는 지적은 버리고 나머지는 살린다.
+ * 하나가 어긋났다고 리뷰 전체를 잃는 것보다, 검증을 통과한 것만 게시하는 편이 낫다.
+ */
+function collectToolCalls(toolCalls: ToolCall[]): ReviewResult {
+  const summaries: string[] = []
+  const findings: RawFinding[] = []
+
+  for (const call of toolCalls) {
+    if (call.name === SUMMARY_TOOL) {
+      const summary = call.arguments['summary']?.trim()
+      if (summary) summaries.push(summary)
+      continue
+    }
+    if (call.name !== FINDING_TOOL) {
+      log.warn(`모델이 알 수 없는 도구를 호출했다: ${call.name}`)
+      continue
+    }
+
+    const parsed = findingSchema.safeParse(call.arguments)
+    if (parsed.success) {
+      findings.push(parsed.data)
+      continue
+    }
+    const issues = parsed.error.issues
+      .slice(0, 3)
+      .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
+      .join('; ')
+    log.warn(`지적 하나가 스키마와 맞지 않아 버렸다 — ${issues}`)
+  }
+
+  return { summary: summaries.join('\n\n'), findings }
 }
 
 function mergeResults(results: ReviewResult[]): ReviewResult {
