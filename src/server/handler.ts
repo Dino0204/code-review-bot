@@ -1,4 +1,4 @@
-import { CONFIG_FILES, INSTRUCTION_FILES, loadConfig } from '../config'
+import { BOT_MENTION, CONFIG_FILES, INSTRUCTION_FILES, loadConfig } from '../config'
 import type { BotConfig } from '../config'
 import { LlmClient } from '../llm'
 import { createGitHubClient } from '../github/client'
@@ -6,9 +6,10 @@ import type { GitHubClient } from '../github/client'
 import type { GitHubApp } from '../github/app'
 import { isBotActor, isTrustedAssociation, parseTrigger, repoRefFrom } from '../github/event'
 import type { RawEvent, Trigger } from '../github/event'
-import { hasReviewTrigger } from '../review/commands'
+import { hasMention, hasReviewTrigger } from '../review/commands'
 import { runReview } from '../review/runner'
 import type { RunnerDeps } from '../review/runner'
+import { answerThread } from '../review/thread'
 import type { RepoInstructions } from '../review/prompt'
 import { renderError } from '../review/render'
 import { log } from '../logger'
@@ -52,28 +53,60 @@ export function accept(deps: HandlerDeps, eventName: string, payload: RawEvent):
     return undefined
   }
 
-  // 슬래시 명령이 아니거나 관심 없는 PR 액션이면 여기서 끝낸다.
-  // 접두사를 커스터마이즈한 리포지토리도 있으므로 `/` 로만 거르고, 판정은 설정을 읽은 뒤에 한다.
-  if (trigger.kind === 'issue_comment' || trigger.kind === 'review_comment') {
+  // 봇을 부르지 않은 코멘트나 관심 없는 PR 액션이면 여기서 끝낸다.
+  // 슬래시 접두사는 리포지토리마다 다를 수 있으므로 `/` 로만 거르고 판정은 설정을 읽은 뒤에 한다.
+  // 멘션 이름은 고정이라 여기서 끝까지 판정한다 — 남을 부른 코멘트에 API를 쓰지 않는다.
+  if (trigger.kind === 'issue_comment') {
     if (!trigger.body.trimStart().startsWith('/')) return undefined
+  } else if (trigger.kind === 'review_comment') {
+    if (!trigger.body.trimStart().startsWith('/') && !hasMention(trigger.body, BOT_MENTION)) return undefined
   } else if (trigger.kind === 'pull_request') {
     if (trigger.draft || !PR_ACTIONS.includes(trigger.action)) return undefined
   }
 
   return {
-    key: `${slug}#${trigger.pr}`,
+    key: queueKey(slug, trigger),
     run: () => execute(deps, repo.owner, repo.repo, installationId, trigger),
   }
 }
 
-/** 이 트리거로 리뷰를 돌려야 하는가. 설정을 읽은 뒤에 판단한다. */
-function shouldReview(trigger: Trigger, triggerPrefix: string, autoReview: boolean): boolean {
+/**
+ * 큐에서 중복을 걸러내는 키.
+ *
+ * 리뷰는 PR 단위로 묶는다 — 커밋을 연달아 밀면 마지막 상태만 보면 된다.
+ * 인라인 쓰레드는 코멘트 단위로 나눈다: 한 PR의 여러 쓰레드에서 동시에 봇을 부를 수 있고,
+ * 그중 하나만 답하고 나머지를 버리면 사람이 부른 말이 조용히 사라진다.
+ */
+function queueKey(slug: string, trigger: Trigger): string {
+  return trigger.kind === 'review_comment'
+    ? `${slug}#${trigger.pr}@${trigger.commentId}`
+    : `${slug}#${trigger.pr}`
+}
+
+/** 봇이 이 트리거에 대해 할 일 */
+type Intent = { kind: 'review' } | { kind: 'reply'; commentId: number }
+
+/**
+ * 이 트리거로 무엇을 할지 정한다. 설정을 읽은 뒤에 판단한다.
+ *
+ * 인라인 쓰레드에서는 `/review` 명령과 멘션이 둘 다 올 수 있다.
+ * 명령을 먼저 본다 — 명시적으로 리뷰를 시킨 사람에게 잡담으로 답하면 안 된다.
+ */
+function resolveIntent(trigger: Trigger, config: BotConfig): Intent | undefined {
   switch (trigger.kind) {
-    case 'issue_comment':
-    case 'review_comment':
-      return hasReviewTrigger(trigger.body, triggerPrefix)
     case 'pull_request':
-      return autoReview
+      return config.autoReview ? { kind: 'review' } : undefined
+
+    case 'issue_comment':
+      return hasReviewTrigger(trigger.body, config.triggerPrefix) ? { kind: 'review' } : undefined
+
+    case 'review_comment': {
+      if (hasReviewTrigger(trigger.body, config.triggerPrefix)) return { kind: 'review' }
+      if (!config.threadReply) return undefined
+      // accept 는 슬래시로 시작하는 코멘트도 통과시킨다 — `/review` 가 아닌 명령이 여기까지 온다
+      if (!hasMention(trigger.body, BOT_MENTION)) return undefined
+      return { kind: 'reply', commentId: trigger.commentId }
+    }
   }
 }
 
@@ -102,16 +135,18 @@ async function execute(
   const pr = await github.getPullRequest(trigger.pr)
   const config = await loadRepoConfig(github, pr.headSha)
 
-  if (!shouldReview(trigger, config.triggerPrefix, config.autoReview)) {
-    log.debug(`${slug}#${trigger.pr}: 리뷰 대상이 아니다`)
+  const intent = resolveIntent(trigger, config)
+  if (!intent) {
+    log.debug(`${slug}#${trigger.pr}: 봇을 부른 이벤트가 아니다`)
     return
   }
 
-  if (byComment) await github.addReaction(trigger.commentId, 'eyes')
+  if (byComment) {
+    const target = trigger.kind === 'review_comment' ? 'review_comment' : 'issue_comment'
+    await github.addReaction(trigger.commentId, 'eyes', target)
+  }
 
-  log.info(`${slug}#${pr.number} "${pr.title}" 리뷰 시작`)
-
-  // 리뷰를 돌리기로 정한 뒤에 읽는다 — 무시할 이벤트에 API 쿼터를 쓰지 않는다
+  // 할 일을 정한 뒤에 읽는다 — 무시할 이벤트에 API 쿼터를 쓰지 않는다
   const instructions = await loadRepoInstructions(github, pr.headSha)
 
   const llm = new LlmClient({
@@ -119,20 +154,46 @@ async function execute(
     baseUrl: config.baseUrl,
     model: config.model,
   })
-  const runnerDeps: RunnerDeps = { github, llm, config, instructions }
 
   try {
+    if (intent.kind === 'reply') {
+      log.info(`${slug}#${pr.number} 쓰레드 응답 시작 (코멘트 ${intent.commentId})`)
+      const outcome = await answerThread(
+        { github, llm, config, instructions },
+        pr,
+        intent.commentId,
+      )
+      if (outcome.degraded) log.warn('도구 호출을 받지 못해 모델 본문을 그대로 실었다')
+      return
+    }
+
+    log.info(`${slug}#${pr.number} "${pr.title}" 리뷰 시작`)
+    const runnerDeps: RunnerDeps = { github, llm, config, instructions }
     const outcome = await runReview(runnerDeps, pr)
     log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건`)
   } catch (error) {
-    // 실패 사실을 PR에서 바로 볼 수 있게 남긴다
+    // 실패 사실을 사람이 부른 자리에서 바로 볼 수 있게 남긴다
     const message = error instanceof Error ? error.message : String(error)
     log.error(`${slug}#${pr.number} 실패: ${message}`)
-    await github
-      .createIssueComment(trigger.pr, renderError(message))
-      .catch((commentError: unknown) => log.warn(`실패 코멘트 등록 실패: ${String(commentError)}`))
+    await reportFailure(github, trigger, intent, message).catch((commentError: unknown) =>
+      log.warn(`실패 코멘트 등록 실패: ${String(commentError)}`),
+    )
     throw error
   }
+}
+
+/** 실패를 알린다. 쓰레드에서 부른 것이면 그 쓰레드에, 아니면 PR 코멘트로 남긴다. */
+async function reportFailure(
+  github: GitHubClient,
+  trigger: Trigger,
+  intent: Intent,
+  message: string,
+): Promise<void> {
+  if (intent.kind === 'reply') {
+    await github.replyToReviewComment(trigger.pr, intent.commentId, renderError(message, '답변 실패'))
+    return
+  }
+  await github.createIssueComment(trigger.pr, renderError(message))
 }
 
 /** 리포지토리의 설정 파일을 API로 읽는다. 후보 중 먼저 발견된 하나만 쓴다. */
