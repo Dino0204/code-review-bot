@@ -16,4 +16,8 @@ minSeverity: minor
 maxInlineComments: 25
 triggerPrefix: "/review"
 
+# 인라인 리뷰 쓰레드에서 @itplay-code-review-bot 으로 부르면 그 쓰레드에 답한다.
+# 부르는 이름은 코드에 고정되어 있다(src/config.ts 의 BOT_MENTION).
+threadReply: true
+
 # 리뷰 지침은 여기 두지 않는다 — 리포지토리 루트의 AGENTS.md 또는 CLAUDE.md 를 그대로 읽는다.
