@@ -26,7 +26,7 @@ export interface BotConfig {
   /** 지정 시 이 glob에 매칭되는 파일만 리뷰 */
   include: string[]
 
-  /** PR 최초 생성(open) 시에만 자동 리뷰 — 이후 푸시(synchronize)는 재리뷰하지 않는다 */
+  /** PR open/reopen/ready_for_review 시 자동 리뷰 — 이후 푸시(synchronize)는 재리뷰하지 않는다 */
   autoReview: boolean
   /** 이 심각도 미만은 코멘트하지 않음 */
   minSeverity: Severity
