@@ -1,4 +1,3 @@
-import type { ZodType } from 'zod'
 import { describeNetworkError } from './net'
 import { log } from './logger'
 
@@ -16,22 +15,34 @@ export interface TokenUsage {
 export interface ChatOptions {
   temperature?: number
   maxTokens?: number
-  /** true면 response_format: json_object 로 요청 */
-  json?: boolean
+}
+
+/** 모델에게 제시할 도구 하나. parameters는 JSON Schema 객체다. */
+export interface ToolDefinition {
+  name: string
+  description: string
+  parameters: Record<string, unknown>
+}
+
+/**
+ * 모델이 호출한 도구 하나.
+ * 값은 XML 텍스트에서 그대로 뽑아낸 문자열이다 — 타입 변환은 zod 스키마가 맡는다.
+ */
+export interface ToolCall {
+  name: string
+  arguments: Record<string, string>
+}
+
+export interface ToolChatResult {
+  toolCalls: ToolCall[]
+  /** 도구 호출을 걷어낸 나머지 본문 (`<think>` 블록 제외) */
+  text: string
 }
 
 export class LlmError extends Error {
-  /**
-   * 구조화된 JSON으로 파싱하지 못했을 때도, 모델이 만든 원문(think 블록 제외)은 남아 있다.
-   * 이건 GSML 서버의 규격 위반이 아니라 우리 쪽 JSON 추출 로직의 한계이므로,
-   * 호출부가 원하면 이 원문을 그대로 게시하는 등으로 구제할 수 있게 노출한다.
-   */
-  readonly rawContent?: string
-
-  constructor(message: string, rawContent?: string) {
+  constructor(message: string) {
     super(message)
     this.name = 'LlmError'
-    this.rawContent = rawContent
   }
 }
 
@@ -79,7 +90,6 @@ export class LlmClient {
       temperature: options.temperature ?? 0.2,
       max_tokens: options.maxTokens ?? 8192,
     }
-    if (options.json) body['response_format'] = { type: 'json_object' }
 
     let response: Response
     try {
@@ -117,106 +127,113 @@ export class LlmClient {
     return content
   }
 
-  /** JSON 응답을 스키마로 검증해서 돌려준다. */
-  async chatJson<T>(messages: ChatMessage[], schema: ZodType<T>, options: ChatOptions = {}): Promise<T> {
-    const content = await this.chat(messages, { ...options, json: true })
+  /**
+   * 도구를 제시하고 모델이 호출한 결과를 받아온다.
+   *
+   * GSML 게이트웨이는 OpenAI의 `tools` 파라미터를 조용히 버린다(HTTP 200에 에러도 없다) —
+   * 상류 llama.cpp가 `--jinja` 없이 떠 있어 채팅 템플릿의 도구 분기가 실행되지 않기 때문이다.
+   * 그래서 템플릿이 해줬어야 할 일을 여기서 직접 한다: 도구 정의를 system 메시지로 주입하고
+   * 응답의 `<tool_call>` XML을 직접 파싱한다. 자세한 근거는 buildToolSystemBlock 주석에 있다.
+   */
+  async chatWithTools(
+    messages: ChatMessage[],
+    tools: ToolDefinition[],
+    options: ChatOptions = {},
+  ): Promise<ToolChatResult> {
+    const content = await this.chat(withToolSystemBlock(messages, tools), options)
     log.debug(`모델 원문 응답\n${content}`)
-
-    const cleaned = stripThinkBlock(content)
-    const json = extractJsonObject(cleaned)
-    if (json === undefined) {
-      throw new LlmError(`응답에서 JSON 객체를 찾지 못했다.${evidence(content, cleaned)}`, cleaned)
-    }
-
-    // extractJsonObject는 이미 JSON.parse가 되는 후보만 돌려준다
-    const parsed: unknown = JSON.parse(json)
-
-    const result = schema.safeParse(parsed)
-    if (result.success) return result.data
-    const issues = result.error.issues
-      .slice(0, 5)
-      .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
-      .join('; ')
-    throw new LlmError(`응답이 스키마와 맞지 않는다 — ${issues}${evidence(content, json)}`, cleaned)
+    return parseToolCalls(stripThinkBlock(content))
   }
 }
 
 /**
- * 파싱 실패를 눈으로 볼 수 있게 근거를 붙인다.
+ * 도구 정의를 담은 system 블록을 맨 앞에 세운다.
  *
- * 실패했다는 사실만 남기면 서버를 고칠 근거가 없다. 특히 이 모델은 본문 앞에
- * `<think>` 블록을 붙이고 그 안에 답안 초안을 적어보는데, 초안이 먼저 나오면
- * extractJsonObject가 그쪽을 집는다 — 그 경우를 바로 알아볼 수 있게 표시한다.
+ * 채팅 템플릿은 도구가 있을 때 도구 블록을 먼저 쓰고 그 뒤에 원래 system 내용을 붙인다.
+ * 같은 순서를 지켜야 모델이 학습된 배치와 어긋나지 않는다.
  */
-function evidence(raw: string, attempted: string): string {
-  const parts = [`\n--- 파싱하려던 내용 ---\n${attempted.slice(0, 600)}`]
-  if (raw.includes('<think>') && !raw.includes('</think>')) {
-    parts.push('\n(응답이 <think> 블록 안에서 잘렸다 — 답변까지 못 갔을 수 있다. 전체 원문은 REVIEWBOT_DEBUG=1 로 볼 수 있다)')
+function withToolSystemBlock(messages: ChatMessage[], tools: ToolDefinition[]): ChatMessage[] {
+  const block = buildToolSystemBlock(tools)
+  const first = messages[0]
+  if (first?.role === 'system') {
+    return [{ role: 'system', content: `${block}\n\n${first.content}` }, ...messages.slice(1)]
   }
-  return parts.join('')
+  return [{ role: 'system', content: block }, ...messages]
+}
+
+/**
+ * Qwen3.6 채팅 템플릿(`chat_template.jinja`)의 도구 분기가 만들어내는 system 블록을 그대로 재현한다.
+ *
+ * 이 문자열은 모델이 학습된 형태이므로 임의로 다듬지 않는다 — 문구를 바꾸면 준수율이 떨어진다.
+ * 도구 객체는 템플릿의 `tool | tojson`과 맞추기 위해 OpenAI 형태로 감싸서 직렬화한다.
+ */
+export function buildToolSystemBlock(tools: ToolDefinition[]): string {
+  const serialized = tools
+    .map((tool) => `\n${JSON.stringify({ type: 'function', function: tool })}`)
+    .join('')
+
+  return (
+    '# Tools\n\nYou have access to the following functions:\n\n<tools>' +
+    serialized +
+    '\n</tools>' +
+    '\n\nIf you choose to call a function ONLY reply in the following format with NO suffix:' +
+    '\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\nvalue_1\n</parameter>' +
+    '\n<parameter=example_parameter_2>\nThis is the value for the second parameter\nthat can span\nmultiple lines' +
+    '\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\nReminder:' +
+    '\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags' +
+    '\n- Required parameters MUST be specified' +
+    '\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after' +
+    '\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls' +
+    '\n</IMPORTANT>'
+  )
+}
+
+const TOOL_CALL_PATTERN = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g
+const FUNCTION_NAME_PATTERN = /<function=([^>\s]+)\s*>/
+const PARAMETER_PATTERN = /<parameter=([^>\s]+)\s*>([\s\S]*?)<\/parameter>/g
+
+/**
+ * 응답에서 `<tool_call>` 블록을 뽑아낸다.
+ *
+ * 닫히지 않은 블록(출력이 max_tokens에 잘린 경우)은 값이 온전하지 않으므로 버린다.
+ * 이름을 읽지 못한 블록도 버린다 — 어떤 도구인지 모르면 검증할 수 없다.
+ */
+export function parseToolCalls(content: string): ToolChatResult {
+  const toolCalls: ToolCall[] = []
+
+  for (const match of content.matchAll(TOOL_CALL_PATTERN)) {
+    const block = match[1] ?? ''
+    const name = FUNCTION_NAME_PATTERN.exec(block)?.[1]
+    if (!name) continue
+
+    const args: Record<string, string> = {}
+    for (const param of block.matchAll(PARAMETER_PATTERN)) {
+      const key = param[1]
+      if (key !== undefined) args[key] = trimParameterValue(param[2] ?? '')
+    }
+    toolCalls.push({ name, arguments: args })
+  }
+
+  return { toolCalls, text: content.replace(TOOL_CALL_PATTERN, '').trim() }
+}
+
+/**
+ * 값을 감싸고 있는 줄바꿈 한 겹만 벗긴다.
+ *
+ * 템플릿이 값을 제 줄에 놓기 때문에 앞뒤로 줄바꿈이 하나씩 붙는다. trim으로 몰아서 지우면
+ * 코드 제안(suggestion)의 들여쓰기가 무너지므로, 정확히 한 겹만 벗기고 나머지는 보존한다.
+ */
+function trimParameterValue(value: string): string {
+  return value.replace(/^\r?\n/, '').replace(/\r?\n[ \t]*$/, '')
 }
 
 /**
  * `<think>...</think>` 블록을 걷어낸다. 이 모델은 항상 본문 앞에 추론을 붙이는데,
- * 리뷰 대상 diff에 템플릿 리터럴(`${...}`)이 있으면 추론 중 그 코드를 인용하다가
- * `{`가 실제 답변보다 먼저 나타나 extractJsonObject를 오도할 수 있다.
+ * 그 안에서 답안을 미리 적어보는 일이 있어 — 걷어내지 않으면 초안에 들어 있는
+ * `<tool_call>` 예시까지 실제 호출로 잡힌다.
  * 태그가 닫히지 않았으면(응답 잘림) 원문을 그대로 둔다 — 그 경우는 파싱이 실패하는 게 맞다.
  */
 export function stripThinkBlock(raw: string): string {
   const end = raw.indexOf('</think>')
   return end === -1 ? raw : raw.slice(end + '</think>'.length)
-}
-
-/**
- * 코드펜스/설명이 섞여 있어도 실제로 JSON.parse가 되는 첫 번째 균형 잡힌 객체를 뽑아낸다.
- * think 블록을 걷어내도, 모델이 답변 앞에 diff 속 코드를 인용하는 일이 있어 — 그 코드의
- * `{`가 먼저 걸리면 균형은 맞아도 JSON이 아니다. 그런 후보는 버리고 다음 `{`부터 다시 찾는다.
- * 문자열 리터럴 안의 중괄호는 무시한다.
- */
-export function extractJsonObject(raw: string): string | undefined {
-  const text = raw.trim()
-  let searchFrom = 0
-
-  while (searchFrom < text.length) {
-    const start = text.indexOf('{', searchFrom)
-    if (start === -1) return undefined
-
-    const end = findBalancedBraceEnd(text, start)
-    if (end === undefined) {
-      searchFrom = start + 1
-      continue
-    }
-
-    const candidate = text.slice(start, end + 1)
-    try {
-      JSON.parse(candidate)
-      return candidate
-    } catch {
-      searchFrom = end + 1
-    }
-  }
-  return undefined
-}
-
-function findBalancedBraceEnd(text: string, start: number): number | undefined {
-  let depth = 0
-  let inString = false
-  let escaped = false
-
-  for (let i = start; i < text.length; i++) {
-    const char = text[i]
-    if (inString) {
-      if (escaped) escaped = false
-      else if (char === '\\') escaped = true
-      else if (char === '"') inString = false
-      continue
-    }
-    if (char === '"') inString = true
-    else if (char === '{') depth++
-    else if (char === '}') {
-      depth--
-      if (depth === 0) return i
-    }
-  }
-  return undefined
 }

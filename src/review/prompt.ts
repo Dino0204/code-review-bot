@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../llm'
+import type { ChatMessage, ToolDefinition } from '../llm'
 import type { BotConfig } from '../config'
 import type { PullRequestInfo } from '../github/client'
 import type { DiffFile } from '../github/diff'
@@ -70,27 +70,58 @@ export function buildSystemPrompt(config: BotConfig): string {
     '여러 줄에 걸친 지적(end_line 지정)에는 suggestion을 넣지 않는다.',
     '',
     '## 출력 형식',
-    '설명 없이 아래 JSON 객체 하나만 출력한다.',
-    '```json',
-    '{',
-    '  "summary": "변경 내용 요약과 전반적인 평가 (마크다운, 3~6줄)",',
-    '  "findings": [',
-    '    {',
-    '      "file": "리포지토리 루트 기준 경로",',
-    '      "line": 42,',
-    '      "end_line": 45,',
-    `      "severity": "${SEVERITIES.join(' | ')}",`,
-    '      "title": "한 줄 요약",',
-    '      "detail": "왜 문제인지와 어떻게 고칠지 (마크다운 허용)",',
-    '      "suggestion": "대체 코드 또는 생략"',
-    '    }',
-    '  ]',
-    '}',
-    '```',
+    '리뷰 결과는 오직 도구 호출로만 전달된다. 도구를 부르지 않고 쓴 본문은 아무에게도 보이지 않고 버려진다.',
+    `1. \`${SUMMARY_TOOL}\` 를 정확히 한 번 호출해 전체 요약을 남긴다.`,
+    `2. 지적할 것이 있으면 발견마다 \`${FINDING_TOOL}\` 을 한 번씩 호출한다.`,
+    '지적할 것이 없으면 요약만 호출하고 끝낸다.',
     '',
-    `title, detail, summary는 ${languageName(config.language)}로 작성한다. 코드/식별자/에러 메시지는 원문 그대로 둔다.`,
-    '지적할 것이 없으면 findings를 빈 배열로 둔다.',
+    `본문(summary, title, detail)은 ${languageName(config.language)}로 작성한다. 코드/식별자/에러 메시지는 원문 그대로 둔다.`,
   ].join('\n')
+}
+
+export const SUMMARY_TOOL = 'submit_summary'
+export const FINDING_TOOL = 'submit_inline_comment'
+
+/**
+ * 모델에게 제시할 도구.
+ *
+ * 값은 XML 텍스트로 오가므로 여기 적은 JSON Schema는 모델을 안내하는 역할만 한다 —
+ * 실제 타입 검증은 `review/schema.ts` 의 zod 스키마가 맡는다. 둘의 필드 이름은 반드시 맞춰야 한다.
+ */
+export function reviewTools(config: BotConfig): ToolDefinition[] {
+  return [
+    {
+      name: SUMMARY_TOOL,
+      description: '이번 PR 전체에 대한 요약과 평가를 제출한다. 리뷰마다 정확히 한 번 호출한다.',
+      parameters: {
+        type: 'object',
+        properties: {
+          summary: {
+            type: 'string',
+            description: `변경 내용 요약과 전반적인 평가. 마크다운 3~6줄, ${languageName(config.language)}.`,
+          },
+        },
+        required: ['summary'],
+      },
+    },
+    {
+      name: FINDING_TOOL,
+      description: '발견한 문제 하나를 인라인 코멘트로 제출한다. 발견마다 한 번씩 호출한다.',
+      parameters: {
+        type: 'object',
+        properties: {
+          file: { type: 'string', description: '리포지토리 루트 기준 파일 경로' },
+          line: { type: 'integer', description: '변경 후 파일 기준 줄 번호. diff 왼쪽에 붙은 숫자를 그대로 쓴다.' },
+          end_line: { type: 'integer', description: '여러 줄에 걸친 지적일 때의 끝 줄. 한 줄이면 생략한다.' },
+          severity: { type: 'string', enum: [...SEVERITIES] },
+          title: { type: 'string', description: '한 줄 요약' },
+          detail: { type: 'string', description: '왜 문제인지와 어떻게 고칠지. 마크다운 허용.' },
+          suggestion: { type: 'string', description: 'line 줄을 그대로 대체할 수 있는 완성된 코드. 아니면 생략한다.' },
+        },
+        required: ['file', 'line', 'severity', 'title', 'detail'],
+      },
+    },
+  ]
 }
 
 function prMeta(pr: PullRequestInfo): string {
@@ -150,7 +181,7 @@ export function buildReviewMessages(context: ReviewContext): ChatMessage[] {
     '## 변경 사항 (diff)',
     renderDiff(context),
     context.instructions ? instructionsSection(context.instructions) : '',
-    '\n지정된 JSON 형식으로만 응답하라.',
+    `\n${SUMMARY_TOOL} 을 반드시 호출하고, 지적할 것이 있으면 ${FINDING_TOOL} 도 함께 호출하라.`,
   ].join('\n')
 
   return [
