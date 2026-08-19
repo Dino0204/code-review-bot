@@ -35,7 +35,18 @@ export interface BotConfig {
 
   /** 코멘트 트리거 접두사 */
   triggerPrefix: string
+
+  /** 인라인 리뷰 쓰레드에서 봇을 멘션하면 답글을 단다 */
+  threadReply: boolean
 }
+
+/**
+ * 인라인 쓰레드에서 봇을 부르는 이름. 이 이름 하나에만 반응한다.
+ *
+ * 리포지토리별로 바꿀 수 없게 상수로 둔다 — 부르는 이름이 리포마다 다르면
+ * 사람이 어디서 뭐라고 불러야 하는지 알 수 없고, 설정을 읽기 전에는 걸러낼 수도 없다.
+ */
+export const BOT_MENTION = 'itplay-code-review-bot'
 
 export const DEFAULT_CONFIG: BotConfig = {
   // GSML 게이트웨이는 모델 하나만 서빙한다. 모델 ID는 /v1/models 로 확인한다.
@@ -85,6 +96,8 @@ export const DEFAULT_CONFIG: BotConfig = {
   maxInlineComments: 25,
 
   triggerPrefix: '/review',
+
+  threadReply: true,
 }
 
 /** 리포지토리 루트의 설정 파일 후보 (먼저 발견된 것 하나만 사용) */
@@ -126,6 +139,7 @@ function pickFileConfig(raw: unknown): Partial<BotConfig> {
   }
 
   if (typeof r['autoReview'] === 'boolean') out.autoReview = r['autoReview']
+  if (typeof r['threadReply'] === 'boolean') out.threadReply = r['threadReply']
 
   const exclude = coerceStringArray(r['exclude'])
   if (exclude) out.exclude = [...DEFAULT_CONFIG.exclude, ...exclude]
@@ -150,6 +164,7 @@ function envOverrides(): Partial<BotConfig> {
     out.minSeverity = env['REVIEWBOT_MIN_SEVERITY'] as Severity
   }
   if (env['REVIEWBOT_AUTO_REVIEW']) out.autoReview = env['REVIEWBOT_AUTO_REVIEW'] !== 'false'
+  if (env['REVIEWBOT_THREAD_REPLY']) out.threadReply = env['REVIEWBOT_THREAD_REPLY'] !== 'false'
   if (env['REVIEWBOT_MAX_FILES']) {
     const n = Number(env['REVIEWBOT_MAX_FILES'])
     if (Number.isFinite(n)) out.maxFiles = n
