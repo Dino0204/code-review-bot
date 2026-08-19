@@ -83,12 +83,13 @@ export class LlmClient {
   }
 
   private async chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<string> {
+    const maxTokens = options.maxTokens ?? 8192
     const body: Record<string, unknown> = {
       model: this.model,
       messages,
       stream: false,
       temperature: options.temperature ?? 0.2,
-      max_tokens: options.maxTokens ?? 8192,
+      max_tokens: maxTokens,
     }
 
     let response: Response
@@ -120,9 +121,23 @@ export class LlmClient {
       this.totalUsage.total_tokens += data.usage.total_tokens ?? 0
     }
 
-    const content = data.choices?.[0]?.message?.content ?? ''
+    const choice = data.choices?.[0]
+    const finishReason = choice?.finish_reason ?? 'unknown'
+    const usage = data.usage
+    log.info(
+      `모델 응답 — finish_reason=${finishReason}` +
+        (usage ? `, 토큰 ${usage.prompt_tokens ?? 0} in / ${usage.completion_tokens ?? 0} out` : ''),
+    )
+
+    // max_tokens에서 잘린 응답은 `<tool_call>` 이 닫히지 않아 파싱에서 통째로 버려진다.
+    // 그러면 결과만 봐서는 모델이 도구를 안 부른 것과 구분되지 않으므로 여기서 남긴다.
+    if (finishReason === 'length') {
+      log.warn(`응답이 max_tokens(${maxTokens})에서 잘렸다 — 도구 호출이 온전하지 않을 수 있다`)
+    }
+
+    const content = choice?.message?.content ?? ''
     if (!content.trim()) {
-      throw new LlmError(`모델이 빈 응답을 반환했다 (finish_reason=${data.choices?.[0]?.finish_reason ?? 'unknown'})`)
+      throw new LlmError(`모델이 빈 응답을 반환했다 (finish_reason=${finishReason})`)
     }
     return content
   }

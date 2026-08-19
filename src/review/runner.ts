@@ -195,6 +195,8 @@ function retryNudge(): string {
 function collectToolCalls(toolCalls: ToolCall[]): ReviewResult {
   const summaries: string[] = []
   const findings: RawFinding[] = []
+  let malformed = 0
+  let unknown = 0
 
   for (const call of toolCalls) {
     if (call.name === SUMMARY_TOOL) {
@@ -204,6 +206,7 @@ function collectToolCalls(toolCalls: ToolCall[]): ReviewResult {
     }
     if (call.name !== FINDING_TOOL) {
       log.warn(`모델이 알 수 없는 도구를 호출했다: ${call.name}`)
+      unknown++
       continue
     }
 
@@ -212,12 +215,21 @@ function collectToolCalls(toolCalls: ToolCall[]): ReviewResult {
       findings.push(parsed.data)
       continue
     }
+    malformed++
     const issues = parsed.error.issues
       .slice(0, 3)
       .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
       .join('; ')
     log.warn(`지적 하나가 스키마와 맞지 않아 버렸다 — ${issues}`)
   }
+
+  // 지적이 0건일 때 원인을 가릴 수 있어야 한다 —
+  // 모델이 요약만 낸 것과, 낸 지적이 검증에서 떨어진 것은 서로 다른 문제다.
+  log.info(
+    `도구 호출 ${toolCalls.length}건 — 요약 ${summaries.length}, 지적 ${findings.length}` +
+      (malformed ? `, 형식 오류 ${malformed}` : '') +
+      (unknown ? `, 모르는 도구 ${unknown}` : ''),
+  )
 
   return { summary: summaries.join('\n\n'), findings }
 }
@@ -248,13 +260,19 @@ export function prepareFindings(
   const severityOrder = { critical: 0, major: 1, minor: 2, nit: 3 }
   const seen = new Set<string>()
   const candidates: Finding[] = []
+  // 여기서 걸러진 지적은 인라인에도 요약에도 실리지 않는다 — 사라진 이유를 셈해 남긴다
+  const dropped = { severity: 0, file: 0, duplicate: 0 }
 
   for (const raw of result.findings) {
-    if (!meetsSeverity(raw.severity, config.minSeverity)) continue
+    if (!meetsSeverity(raw.severity, config.minSeverity)) {
+      dropped.severity++
+      continue
+    }
 
     const file = resolveFile(raw.file, files)
     if (!file) {
       log.debug(`diff에 없는 파일이라 버린다: ${raw.file}`)
+      dropped.file++
       continue
     }
 
@@ -275,7 +293,10 @@ export function prepareFindings(
     }
 
     const key = dedupeKey(finding.file, finding.line, finding.title)
-    if (seen.has(key)) continue
+    if (seen.has(key)) {
+      dropped.duplicate++
+      continue
+    }
     seen.add(key)
     candidates.push(finding)
   }
@@ -287,6 +308,16 @@ export function prepareFindings(
   for (const finding of candidates) {
     if (finding.inlineDropped || inline.length >= config.maxInlineComments) overflow.push(finding)
     else inline.push(finding)
+  }
+
+  if (result.findings.length > 0) {
+    const total = dropped.severity + dropped.file + dropped.duplicate
+    log.info(
+      `지적 ${result.findings.length}건 → 인라인 ${inline.length}, 요약 ${overflow.length}` +
+        (total
+          ? ` (제외 ${total} — 심각도 ${dropped.severity}, 경로 ${dropped.file}, 중복 ${dropped.duplicate})`
+          : ''),
+    )
   }
 
   return { inline, overflow }
