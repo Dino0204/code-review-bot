@@ -21,6 +21,13 @@ export interface BotConfig {
   /** 파일 하나를 컨텍스트에 넣을 때의 최대 문자 수 */
   maxFileChars: number
 
+  /** diff와 함께 변경된 파일의 현재 내용도 싣는다 */
+  includeSources: boolean
+  /** 파일 하나의 현재 내용에 쓸 최대 문자 수 */
+  maxSourceChars: number
+  /** 모델이 read_file로 더 읽어갈 수 있는 파일 수 (0이면 도구를 주지 않는다) */
+  maxExtraReads: number
+
   /** 리뷰에서 제외할 glob */
   exclude: string[]
   /** 지정 시 이 glob에 매칭되는 파일만 리뷰 */
@@ -64,6 +71,12 @@ export const DEFAULT_CONFIG: BotConfig = {
   maxPromptChars: 140_000,
   maxFiles: 40,
   maxFileChars: 24_000,
+
+  // diff만 주면 헝크 밖을 알 수 없어, 손대지 않은 줄을 새로 생긴 것으로 읽는 오탐이 나온다.
+  // 원본을 함께 실으면 프롬프트가 커지지만 그만큼 지적의 근거가 확실해진다.
+  includeSources: true,
+  maxSourceChars: 16_000,
+  maxExtraReads: 6,
 
   exclude: [
     '**/node_modules/**',
@@ -132,6 +145,8 @@ function pickFileConfig(raw: unknown): Partial<BotConfig> {
     'maxPromptChars',
     'maxFiles',
     'maxFileChars',
+    'maxSourceChars',
+    'maxExtraReads',
     'maxInlineComments',
   ] as const
   for (const key of numbers) {
@@ -140,6 +155,7 @@ function pickFileConfig(raw: unknown): Partial<BotConfig> {
 
   if (typeof r['autoReview'] === 'boolean') out.autoReview = r['autoReview']
   if (typeof r['threadReply'] === 'boolean') out.threadReply = r['threadReply']
+  if (typeof r['includeSources'] === 'boolean') out.includeSources = r['includeSources']
 
   const exclude = coerceStringArray(r['exclude'])
   if (exclude) out.exclude = [...DEFAULT_CONFIG.exclude, ...exclude]
@@ -165,6 +181,11 @@ function envOverrides(): Partial<BotConfig> {
   }
   if (env['REVIEWBOT_AUTO_REVIEW']) out.autoReview = env['REVIEWBOT_AUTO_REVIEW'] !== 'false'
   if (env['REVIEWBOT_THREAD_REPLY']) out.threadReply = env['REVIEWBOT_THREAD_REPLY'] !== 'false'
+  if (env['REVIEWBOT_INCLUDE_SOURCES']) out.includeSources = env['REVIEWBOT_INCLUDE_SOURCES'] !== 'false'
+  if (env['REVIEWBOT_MAX_EXTRA_READS']) {
+    const n = Number(env['REVIEWBOT_MAX_EXTRA_READS'])
+    if (Number.isFinite(n)) out.maxExtraReads = n
+  }
   if (env['REVIEWBOT_MAX_FILES']) {
     const n = Number(env['REVIEWBOT_MAX_FILES'])
     if (Number.isFinite(n)) out.maxFiles = n
