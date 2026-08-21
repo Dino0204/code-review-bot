@@ -256,7 +256,9 @@ export function createGitHubClient(token: string, repo: RepoRef): GitHubClient {
           })
         }
       } catch (error) {
-        log.debug(`리액션 등록 실패(무시): ${(error as Error).message}`)
+        // 리뷰를 막을 이유는 아니지만 조용히 넘기지도 않는다 —
+        // 리액션은 "봇이 봤다"는 유일한 즉시 신호라, 빠지면 사람이 같은 요청을 되풀이한다.
+        log.warn(`리액션 등록 실패(${target} ${id}): ${(error as Error).message}`)
       }
     },
 
