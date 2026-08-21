@@ -142,9 +142,15 @@ async function execute(
     return
   }
 
+  // 봇이 이벤트를 붙잡았다는 것을 사람이 볼 수 있게 남긴다.
+  // 큐가 밀리면 리뷰가 끝나기까지 수십 분이 걸리는데, 그때까지 아무 표시가 없으면
+  // 무시당한 줄 알고 같은 요청을 되풀이하게 된다.
   if (byComment) {
     const target = trigger.kind === 'review_comment' ? 'review_comment' : 'issue_comment'
     await github.addReaction(trigger.commentId, 'eyes', target)
+  } else {
+    // 자동 리뷰에는 사람이 부른 코멘트가 없다 — PR 본문에 단다
+    await github.addReaction(trigger.pr, 'eyes', 'issue')
   }
 
   // 할 일을 정한 뒤에 읽는다 — 무시할 이벤트에 API 쿼터를 쓰지 않는다
