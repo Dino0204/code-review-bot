@@ -3,6 +3,8 @@ import type { BotConfig } from '../config'
 import type { PullRequestInfo, ReviewThread } from '../github/client'
 import type { DiffFile } from '../github/diff'
 import { renderFileDiff } from '../github/diff'
+import type { FileSource } from './source'
+import { renderFileSource } from './source'
 import { BOT_MENTION, SEVERITIES } from '../config'
 
 /** 리포지토리가 코드 작성자를 위해 두고 있는 지침 문서 (AGENTS.md 등) */
@@ -16,6 +18,8 @@ export interface ReviewContext {
   config: BotConfig
   pr: PullRequestInfo
   diffFiles: DiffFile[]
+  /** 변경된 파일들의 현재 내용. 읽지 못했거나 설정으로 껐으면 비어 있다 */
+  sources?: FileSource[]
   instructions?: RepoInstructions
 }
 
@@ -59,6 +63,13 @@ export function buildSystemPrompt(config: BotConfig): string {
     'diff의 각 줄 왼쪽에 붙은 숫자가 **변경 후 파일의 줄 번호**다. `line` 필드에는 반드시 그 숫자를 쓴다.',
     '숫자가 비어 있는 줄(삭제된 줄)은 인라인 코멘트를 달 수 없으므로, 그 문제는 summary에 서술한다.',
     '',
+    '## diff를 읽을 때 주의할 것',
+    'diff의 `+`/`-` 는 "무엇이 바뀌었나"가 아니라 git이 두 판본을 줄 단위로 맞춰본 결과다.',
+    '블록이 새로 끼어들면 **손대지 않은 줄도 `+` 로 찍힌다**. 그 줄을 이번에 추가된 것으로 읽으면,',
+    '원래부터 있던 코드를 "이번에 고쳐졌다"거나 "전에는 빠져 있었다"고 잘못 단정하게 된다.',
+    '어떤 줄이 실제로 새로 생겼는지 확신이 필요하면 아래 실린 파일의 현재 내용과 대조해 확인한다.',
+    '기존 코드가 어떠했는지에 대한 주장은 diff만으로는 근거가 되지 않는다.',
+    '',
     '## suggestion 필드',
     'GitHub에서 이 값은 "이 코드로 교체" 버튼이 된다. 따라서 **오직 소스 코드만** 들어갈 수 있다.',
     '`line` 줄을 그대로 대체할 수 있는 완성된 코드일 때만 채우고, 들여쓰기까지 정확히 맞춘다.',
@@ -75,12 +86,24 @@ export function buildSystemPrompt(config: BotConfig): string {
     `2. 지적할 것이 있으면 발견마다 \`${FINDING_TOOL}\` 을 한 번씩 호출한다.`,
     '지적할 것이 없으면 요약만 호출하고 끝낸다.',
     '',
+    ...(config.maxExtraReads > 0
+      ? [
+          `## ${READ_TOOL}`,
+          '판단에 필요한 코드가 실려 있지 않으면 추측하지 말고 그 파일을 읽는다.',
+          '이번 diff에 없는 파일도 읽을 수 있다 — 호출되는 함수의 정의, 타입 선언, 설정 파일 등이다.',
+          `읽고 싶을 때는 \`${READ_TOOL}\` 만 호출하고 다른 도구는 함께 부르지 않는다.`,
+          '내용을 받은 뒤 다음 차례에 리뷰를 제출한다.',
+          `읽을 수 있는 파일 수에는 상한(${config.maxExtraReads}개)이 있으므로 꼭 필요한 것만 고른다.`,
+          '',
+        ]
+      : []),
     `본문(summary, title, detail)은 ${languageName(config.language)}로 작성한다. 코드/식별자/에러 메시지는 원문 그대로 둔다.`,
   ].join('\n')
 }
 
 export const SUMMARY_TOOL = 'submit_summary'
 export const FINDING_TOOL = 'submit_inline_comment'
+export const READ_TOOL = 'read_file'
 
 /**
  * 모델에게 제시할 도구.
@@ -121,6 +144,25 @@ export function reviewTools(config: BotConfig): ToolDefinition[] {
         required: ['file', 'line', 'severity', 'title', 'detail'],
       },
     },
+    ...(config.maxExtraReads > 0
+      ? [
+          {
+            name: READ_TOOL,
+            description:
+              '리뷰에 필요한 파일의 현재 내용을 읽는다. 이번 diff에 없는 파일도 읽을 수 있다. 이 도구를 부를 때는 다른 도구를 함께 호출하지 않는다.',
+            parameters: {
+              type: 'object',
+              properties: {
+                path: {
+                  type: 'string',
+                  description: '리포지토리 루트 기준 파일 경로. 예: src/review/runner.ts',
+                },
+              },
+              required: ['path'],
+            },
+          },
+        ]
+      : []),
   ]
 }
 
@@ -139,17 +181,43 @@ function prMeta(pr: PullRequestInfo): string {
     .join('\n')
 }
 
-function renderDiff(context: ReviewContext): string {
-  const text = context.diffFiles.map((file) => renderFileDiff(file, context.config.maxFileChars)).join('\n\n')
-  // 시스템 프롬프트와 PR 메타가 쓰는 몫을 빼고 나머지를 diff에 준다.
-  // 지침 문서는 자르지 않으므로 그만큼 diff 예산에서 뺀다 — 다만 큰 지침 문서 하나가
-  // diff를 통째로 밀어내지 않도록 하한을 둔다.
-  const { maxPromptChars } = context.config
-  const budget = Math.max(
+/**
+ * diff와 파일 원본이 나눠 쓸 예산.
+ *
+ * 지침 문서는 자르지 않으므로 먼저 빼둔다 — 다만 큰 지침 문서 하나가 코드를 통째로
+ * 밀어내지 않도록 하한을 둔다. 원본을 싣지 않는 설정이면 diff가 예산을 다 쓴다.
+ */
+function promptBudgets(context: ReviewContext): { diff: number; sources: number } {
+  const { maxPromptChars, includeSources } = context.config
+  const available = Math.max(
     Math.floor(maxPromptChars * 0.85) - (context.instructions?.content.length ?? 0),
     Math.floor(maxPromptChars * 0.3),
   )
+  if (!includeSources || !context.sources?.length) return { diff: available, sources: 0 }
+  return { diff: Math.floor(available * 0.45), sources: Math.floor(available * 0.55) }
+}
+
+function renderDiff(context: ReviewContext, budget: number): string {
+  const text = context.diffFiles.map((file) => renderFileDiff(file, context.config.maxFileChars)).join('\n\n')
   return truncate(text, budget)
+}
+
+/**
+ * 변경된 파일들의 현재 내용을 싣는다.
+ *
+ * diff는 바뀐 줄과 그 주변 몇 줄만 보여주므로, 함수 하나가 어떻게 생겼는지도 알 수 없다.
+ * 그 상태로는 "이 값이 어디서 오는가" 같은 질문에 모델이 추측으로 답하게 된다.
+ */
+function sourcesSection(sources: FileSource[], budget: number): string {
+  const rendered = sources.map((source) => renderFileSource(source)).join('\n\n')
+  return [
+    '',
+    '## 변경된 파일의 현재 내용',
+    'diff에 실린 것과 같은 파일들의 변경 후 전체 내용이다. 헝크 밖 맥락은 여기서 확인한다.',
+    '어떤 줄이 이번에 새로 생겼는지 판단할 때도 diff의 `+` 표시보다 이쪽을 근거로 삼는다.',
+    '',
+    truncate(rendered, budget),
+  ].join('\n')
 }
 
 /**
@@ -171,6 +239,8 @@ function instructionsSection(instructions: RepoInstructions): string {
 
 export function buildReviewMessages(context: ReviewContext): ChatMessage[] {
   const { config } = context
+  const budgets = promptBudgets(context)
+  const sources = config.includeSources ? (context.sources ?? []) : []
 
   const userPrompt = [
     '아래 Pull Request를 리뷰하라.',
@@ -179,7 +249,8 @@ export function buildReviewMessages(context: ReviewContext): ChatMessage[] {
     prMeta(context.pr),
     '',
     '## 변경 사항 (diff)',
-    renderDiff(context),
+    renderDiff(context, budgets.diff),
+    sources.length ? sourcesSection(sources, budgets.sources) : '',
     context.instructions ? instructionsSection(context.instructions) : '',
     `\n${SUMMARY_TOOL} 을 반드시 호출하고, 지적할 것이 있으면 ${FINDING_TOOL} 도 함께 호출하라.`,
   ].join('\n')

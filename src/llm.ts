@@ -37,6 +37,8 @@ export interface ToolChatResult {
   toolCalls: ToolCall[]
   /** 도구 호출을 걷어낸 나머지 본문 (`<think>` 블록 제외) */
   text: string
+  /** `<think>` 만 걷어낸 원문. 대화를 이어갈 때 assistant 차례로 되싣는다 */
+  raw: string
 }
 
 export class LlmError extends Error {
@@ -229,7 +231,7 @@ export function parseToolCalls(content: string): ToolChatResult {
     toolCalls.push({ name, arguments: args })
   }
 
-  return { toolCalls, text: content.replace(TOOL_CALL_PATTERN, '').trim() }
+  return { toolCalls, text: content.replace(TOOL_CALL_PATTERN, '').trim(), raw: content.trim() }
 }
 
 /**
