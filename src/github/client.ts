@@ -32,8 +32,11 @@ export type Reaction = 'eyes' | '+1' | 'rocket'
 /**
  * 리액션을 달 대상. 이슈 코멘트와 리뷰 코멘트는 id 네임스페이스가 따로라
  * 엔드포인트를 잘못 고르면 엉뚱한 코멘트에 붙거나 404가 난다.
+ *
+ * `issue` 는 코멘트가 아니라 PR 본문이다 — 자동 리뷰처럼 사람이 부른 코멘트가
+ * 없는 경우에 쓴다. GitHub은 PR을 이슈로도 다루므로 PR 번호를 그대로 넘긴다.
  */
-export type ReactionTarget = 'issue_comment' | 'review_comment'
+export type ReactionTarget = 'issue' | 'issue_comment' | 'review_comment'
 
 /** 인라인 리뷰 쓰레드에 달린 코멘트 하나 */
 export interface ThreadComment {
@@ -73,7 +76,8 @@ export interface GitHubClient {
   getReviewThread(number: number, commentId: number): Promise<ReviewThread | undefined>
   /** 인라인 쓰레드에 답글을 단다. commentId는 쓰레드의 뿌리 코멘트다 */
   replyToReviewComment(number: number, commentId: number, body: string): Promise<number>
-  addReaction(commentId: number, content: Reaction, target: ReactionTarget): Promise<void>
+  /** `target` 이 `issue` 면 `id` 는 코멘트가 아니라 PR 번호다 */
+  addReaction(id: number, content: Reaction, target: ReactionTarget): Promise<void>
   hasWriteAccess(username: string): Promise<boolean>
 }
 
@@ -230,18 +234,24 @@ export function createGitHubClient(token: string, repo: RepoRef): GitHubClient {
       return data.id
     },
 
-    async addReaction(commentId, content, target) {
+    async addReaction(id, content, target) {
       try {
         if (target === 'review_comment') {
           await octokit.rest.reactions.createForPullRequestReviewComment({
             ...repo,
-            comment_id: commentId,
+            comment_id: id,
+            content,
+          })
+        } else if (target === 'issue') {
+          await octokit.rest.reactions.createForIssue({
+            ...repo,
+            issue_number: id,
             content,
           })
         } else {
           await octokit.rest.reactions.createForIssueComment({
             ...repo,
-            comment_id: commentId,
+            comment_id: id,
             content,
           })
         }
