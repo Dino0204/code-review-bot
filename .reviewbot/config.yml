@@ -1,3 +1,9 @@
+# 이 파일은 여러 리뷰 봇이 나눠 쓴다.
+#   - 최상위 키   : 이 파일을 읽는 모든 봇에 적용되는 공통 설정
+#   - `it-play:`  : 이 봇에만 적용 (겹치는 최상위 키를 덮어쓴다)
+#   - `sandrone:` : sandrone-code-review-bot 에만 적용 — 이 봇은 읽지 않는다
+# 모르는 키는 그냥 무시한다. 상대 봇 전용 키(tone, summaryPlacement 등)를 최상위에 둬도 안전하다.
+
 model: darwin-35b-q4_k_m.gguf
 language: ko
 temperature: 0.2
@@ -19,5 +25,11 @@ triggerPrefix: "/review"
 # 인라인 리뷰 쓰레드에서 @itplay-code-review-bot 으로 부르면 그 쓰레드에 답한다.
 # 부르는 이름은 코드에 고정되어 있다(src/config.ts 의 BOT_MENTION).
 threadReply: true
+
+# 이 봇에만 적용할 값이 있으면 아래처럼 네임스페이스 블록에 둔다.
+# 지금은 이 리포를 이 봇만 리뷰하므로 최상위 키만으로 충분하다.
+#
+# it-play:
+#   maxInlineComments: 40
 
 # 리뷰 지침은 여기 두지 않는다 — 리포지토리 루트의 AGENTS.md 또는 CLAUDE.md 를 그대로 읽는다.

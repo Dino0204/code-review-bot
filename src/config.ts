@@ -117,12 +117,26 @@ export const DEFAULT_CONFIG: BotConfig = {
 export const CONFIG_FILES = ['.reviewbot/config.yml', '.reviewbot/config.yaml', '.reviewbot.yml', '.reviewbot.yaml']
 
 /**
+ * 이 봇의 설정 네임스페이스 키. 앞에 있는 것부터 순서대로 적용한다(뒤가 이긴다).
+ *
+ * 설정 파일 하나를 여러 리뷰 봇이 나눠 쓴다 — 최상위 키는 모든 봇이 읽는 공통 설정이고,
+ * 봇 이름을 키로 둔 블록은 그 봇에만 적용된다. 다른 봇(`sandrone` 등)의 블록은 읽지 않는다.
+ *
+ * 짝이 되는 sandrone-code-review-bot 도 같은 규칙으로 `sandrone:` 블록을 읽는다.
+ */
+export const BOT_NAMESPACES = ['it-play', 'itplay'] as const
+
+/**
  * 리포지토리 루트의 코딩 지침 문서 후보 (먼저 발견된 것 하나만 사용).
  *
  * 사람과 다른 코딩 에이전트가 이미 쓰고 있는 문서를 그대로 리뷰 기준으로 삼는다 —
  * 리뷰 전용 지침을 따로 관리하면 둘이 어긋난다.
  */
 export const INSTRUCTION_FILES = ['AGENTS.md', 'CLAUDE.md']
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
 
 function coerceStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined
@@ -169,6 +183,33 @@ function pickFileConfig(raw: unknown): Partial<BotConfig> {
   return out
 }
 
+/**
+ * 설정 파일 한 장에서 이 봇에 적용할 값을 뽑는다: 최상위 공통 설정 → 이 봇의 네임스페이스 블록.
+ *
+ * 네임스페이스 블록은 최상위와 같은 키를 그대로 쓴다 — 겹치는 키는 블록 쪽이 이긴다.
+ * `exclude` 도 마찬가지로 덮어쓴다(기본 제외 목록 + 그 레이어의 목록). 누적하지 않는 것은
+ * sandrone 쪽 동작과 맞추기 위해서다 — 같은 파일을 읽은 두 봇이 서로 다른 파일을 리뷰하면 안 된다.
+ */
+function pickRepoConfig(raw: unknown): Partial<BotConfig> {
+  let merged = pickFileConfig(raw)
+  if (!isRecord(raw)) return merged
+
+  for (const namespace of BOT_NAMESPACES) {
+    const block = raw[namespace]
+    if (!isRecord(block)) continue
+    log.info(`설정 네임스페이스 적용: ${namespace}`)
+    merged = { ...merged, ...pickFileConfig(block) }
+  }
+
+  // 다른 봇의 블록은 건너뛴다. 키 이름은 외부 입력이라 개수만 남긴다.
+  const skipped = Object.keys(raw).filter(
+    (key) => isRecord(raw[key]) && !(BOT_NAMESPACES as readonly string[]).includes(key),
+  ).length
+  if (skipped > 0) log.info(`다른 봇의 설정 네임스페이스 ${skipped}개를 건너뛰었다`)
+
+  return merged
+}
+
 function envOverrides(): Partial<BotConfig> {
   const env = process.env
   const out: Partial<BotConfig> = {}
@@ -194,7 +235,7 @@ function envOverrides(): Partial<BotConfig> {
 }
 
 /**
- * 설정 병합 순서: 기본값 → 리포지토리 설정 파일 → 환경변수
+ * 설정 병합 순서: 기본값 → 설정 파일 최상위 → 설정 파일의 이 봇 네임스페이스 → 환경변수
  *
  * 설정 파일 내용은 호출부가 GitHub API로 읽어 넘긴다 — 리포지토리를 체크아웃하지 않는다.
  */
@@ -202,7 +243,7 @@ export function loadConfig(fileContent?: string): BotConfig {
   let fromFile: Partial<BotConfig> = {}
   if (fileContent !== undefined) {
     try {
-      fromFile = pickFileConfig(parseYaml(fileContent))
+      fromFile = pickRepoConfig(parseYaml(fileContent))
     } catch (error) {
       log.warn(`설정 파일 파싱 실패: ${(error as Error).message} — 기본값을 사용한다`)
     }
