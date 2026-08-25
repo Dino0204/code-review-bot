@@ -5,32 +5,39 @@
  * 구체적인 내용은 cause에 넣는다. 그대로 로그에 찍으면 원인을 알 수 없다.
  */
 export function describeNetworkError(error: unknown): string {
-  if (!(error instanceof Error)) return String(error)
-  if (error.name === 'TimeoutError' || error.name === 'AbortError') return '응답 시간 초과'
+	if (!(error instanceof Error)) return String(error);
+	if (error.name === "TimeoutError" || error.name === "AbortError")
+		return "응답 시간 초과";
 
-  const cause = (error as { cause?: unknown }).cause
-  if (cause instanceof Error) {
-    const code = (cause as { code?: string }).code
-    if (code) {
-      const hint = NETWORK_HINTS[code]
-      return [code, cause.message, hint && `— ${hint}`].filter(Boolean).join(' ')
-    }
-  }
+	const cause = (error as { cause?: unknown }).cause;
+	if (cause instanceof Error) {
+		const code = (cause as { code?: string }).code;
+		if (code) {
+			const hint = NETWORK_HINTS[code];
+			return [code, cause.message, hint && `— ${hint}`]
+				.filter(Boolean)
+				.join(" ");
+		}
+	}
 
-  // cause에 코드가 없는 경우 — octokit처럼 이미 원인을 풀어 본문에 담아둔 라이브러리가 있다.
-  // 그때 cause를 보면 오히려 "fetch failed"만 나오므로 본문에서 코드를 찾는다.
-  const matched = Object.keys(NETWORK_HINTS).find((code) => error.message.includes(code))
-  const hint = matched ? NETWORK_HINTS[matched] : undefined
-  return hint ? `${error.message} — ${hint}` : error.message
+	// cause에 코드가 없는 경우 — octokit처럼 이미 원인을 풀어 본문에 담아둔 라이브러리가 있다.
+	// 그때 cause를 보면 오히려 "fetch failed"만 나오므로 본문에서 코드를 찾는다.
+	const matched = Object.keys(NETWORK_HINTS).find((code) =>
+		error.message.includes(code),
+	);
+	const hint = matched ? NETWORK_HINTS[matched] : undefined;
+	return hint ? `${error.message} — ${hint}` : error.message;
 }
 
 /** 자주 나오는 오류에 대한 사람 말 설명 */
 const NETWORK_HINTS: Record<string, string> = {
-  ENOTFOUND: 'DNS로 주소를 못 찾았다. 컨테이너의 DNS 설정을 확인해야 한다',
-  EAI_AGAIN: 'DNS 조회가 실패했다. 컨테이너의 DNS 설정을 확인해야 한다',
-  ECONNREFUSED: '연결이 거부됐다',
-  ETIMEDOUT: '연결이 시간 초과됐다. 방화벽이 막고 있을 수 있다',
-  ECONNRESET: '연결이 끊겼다. 중간에서 차단됐을 수 있다',
-  UNABLE_TO_VERIFY_LEAF_SIGNATURE: '인증서를 검증하지 못했다. 중간에서 TLS를 가로채는 장비가 있을 수 있다',
-  SELF_SIGNED_CERT_IN_CHAIN: '자체 서명 인증서가 끼어 있다. TLS를 가로채는 장비가 있을 수 있다',
-}
+	ENOTFOUND: "DNS로 주소를 못 찾았다. 컨테이너의 DNS 설정을 확인해야 한다",
+	EAI_AGAIN: "DNS 조회가 실패했다. 컨테이너의 DNS 설정을 확인해야 한다",
+	ECONNREFUSED: "연결이 거부됐다",
+	ETIMEDOUT: "연결이 시간 초과됐다. 방화벽이 막고 있을 수 있다",
+	ECONNRESET: "연결이 끊겼다. 중간에서 차단됐을 수 있다",
+	UNABLE_TO_VERIFY_LEAF_SIGNATURE:
+		"인증서를 검증하지 못했다. 중간에서 TLS를 가로채는 장비가 있을 수 있다",
+	SELF_SIGNED_CERT_IN_CHAIN:
+		"자체 서명 인증서가 끼어 있다. TLS를 가로채는 장비가 있을 수 있다",
+};

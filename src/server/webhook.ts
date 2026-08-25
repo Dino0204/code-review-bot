@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 /**
  * 웹훅 서명 검증.
@@ -10,30 +10,34 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
  * 비교는 반드시 상수 시간으로 한다 — 문자열 비교는 앞자리부터 어긋나는 지점이
  * 응답 시간에 드러나서, 한 바이트씩 서명을 맞춰나갈 수 있다.
  */
-export function verifySignature(secret: string, body: Buffer, header: string | undefined): boolean {
-  if (!header) return false
+export function verifySignature(
+	secret: string,
+	body: Buffer,
+	header: string | undefined,
+): boolean {
+	if (!header) return false;
 
-  const expected = `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`
-  const received = Buffer.from(header)
-  const expectedBuffer = Buffer.from(expected)
+	const expected = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
+	const received = Buffer.from(header);
+	const expectedBuffer = Buffer.from(expected);
 
-  // timingSafeEqual은 길이가 다르면 던진다. 길이 자체는 비밀이 아니므로 먼저 거른다.
-  if (received.length !== expectedBuffer.length) return false
-  return timingSafeEqual(received, expectedBuffer)
+	// timingSafeEqual은 길이가 다르면 던진다. 길이 자체는 비밀이 아니므로 먼저 거른다.
+	if (received.length !== expectedBuffer.length) return false;
+	return timingSafeEqual(received, expectedBuffer);
 }
 
 /** 요청 본문을 통째로 읽는다. 서명은 원본 바이트에 대해 계산되므로 파싱 전에 보관해야 한다. */
 export async function readBody(
-  stream: AsyncIterable<Buffer | string>,
-  limitBytes = 25 * 1024 * 1024,
+	stream: AsyncIterable<Buffer | string>,
+	limitBytes = 25 * 1024 * 1024,
 ): Promise<Buffer> {
-  const chunks: Buffer[] = []
-  let total = 0
-  for await (const chunk of stream) {
-    const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : chunk
-    total += buffer.length
-    if (total > limitBytes) throw new Error('웹훅 본문이 너무 크다')
-    chunks.push(buffer)
-  }
-  return Buffer.concat(chunks)
+	const chunks: Buffer[] = [];
+	let total = 0;
+	for await (const chunk of stream) {
+		const buffer = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+		total += buffer.length;
+		if (total > limitBytes) throw new Error("웹훅 본문이 너무 크다");
+		chunks.push(buffer);
+	}
+	return Buffer.concat(chunks);
 }

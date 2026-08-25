@@ -1,10 +1,10 @@
 export function hasReviewTrigger(
-  body: string,
-  triggerPrefix = "/review",
+	body: string,
+	triggerPrefix = "/review",
 ): boolean {
-  return speakingLines(body).some(
-    (line) => line === triggerPrefix || line.startsWith(`${triggerPrefix} `),
-  );
+	return speakingLines(body).some(
+		(line) => line === triggerPrefix || line.startsWith(`${triggerPrefix} `),
+	);
 }
 
 /**
@@ -14,10 +14,10 @@ export function hasReviewTrigger(
  * "@bot 이 부분 문서 형식에 대한 논의가 필요합니다" 처럼.
  */
 export function hasMention(body: string, mention: string): boolean {
-  const name = mention.trim().replace(/^@/, "");
-  if (!name) return false;
-  const pattern = mentionPattern(name);
-  return speakingLines(body).some((line) => pattern.test(line));
+	const name = mention.trim().replace(/^@/, "");
+	if (!name) return false;
+	const pattern = mentionPattern(name);
+	return speakingLines(body).some((line) => pattern.test(line));
 }
 
 /**
@@ -25,8 +25,8 @@ export function hasMention(body: string, mention: string): boolean {
  * `@bot` 이 `@bot-staging` 이나 메일 주소 `a@bot` 에 걸리면 안 된다.
  */
 function mentionPattern(name: string): RegExp {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(^|[^\\w/-])@${escaped}(?![\\w-])`, "i");
+	const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return new RegExp(`(^|[^\\w/-])@${escaped}(?![\\w-])`, "i");
 }
 
 /**
@@ -35,18 +35,18 @@ function mentionPattern(name: string): RegExp {
  * 봇 코멘트를 인용해 답하면 인용 안에 남은 명령이나 멘션이 그대로 다시 트리거된다.
  */
 function speakingLines(body: string): string[] {
-  const lines: string[] = [];
-  let inFence = false;
+	const lines: string[] = [];
+	let inFence = false;
 
-  for (const raw of body.split("\n")) {
-    const line = raw.trim();
-    if (line.startsWith("```") || line.startsWith("~~~")) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence || line.startsWith(">")) continue;
-    lines.push(line);
-  }
+	for (const raw of body.split("\n")) {
+		const line = raw.trim();
+		if (line.startsWith("```") || line.startsWith("~~~")) {
+			inFence = !inFence;
+			continue;
+		}
+		if (inFence || line.startsWith(">")) continue;
+		lines.push(line);
+	}
 
-  return lines;
+	return lines;
 }
