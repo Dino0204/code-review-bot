@@ -12,7 +12,8 @@
 		"typecheck": "tsc --noEmit",
 		"format": "npx @biomejs/biome format --write",
 		"line": "npx @biomejs/biome lint --write",
-		"check": "npx @biomejs/biome check --write"
+		"check": "npx @biomejs/biome check --write",
+		"ci:biome": "npx @biomejs/biome ci ."
 	},
 	"repository": {
 		"type": "git",
