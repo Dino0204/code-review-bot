@@ -9,8 +9,9 @@ const RETRIES = 2;
 
 const RetryingOctokit = Octokit.plugin(retry);
 
-function retriesOf(error: any): string {
-	const count = error.request?.request?.retryCount;
+function retriesOf(error: unknown): string {
+	const count = (error as { request?: { request?: { retryCount?: number } } })
+		?.request?.request?.retryCount;
 	return count ? `, 재시도 ${count}회` : "";
 }
 
