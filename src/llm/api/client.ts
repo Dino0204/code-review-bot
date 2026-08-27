@@ -1,0 +1,160 @@
+import { log } from "../../logger";
+import { describeNetworkError } from "../../net";
+import { parseToolCalls } from "../lib/parse-tool-calls";
+import { stripThinkBlock } from "../lib/strip-think-block";
+import { withToolSystemBlock } from "../lib/tool-system-block";
+import { LlmError } from "../model/errors";
+import type {
+	ChatMessage,
+	ChatOptions,
+	LlmClientOptions,
+	TokenUsage,
+	ToolChatResult,
+	ToolDefinition,
+} from "../model/types";
+
+interface ChatCompletion {
+	choices?: Array<{
+		finish_reason?: string;
+		message?: { content?: string | null };
+	}>;
+	usage?: {
+		prompt_tokens?: number;
+		completion_tokens?: number;
+		total_tokens?: number;
+	};
+	error?: { message?: string };
+}
+
+/**
+ * OpenAI 호환 chat completion 클라이언트.
+ *
+ * 호출하고 응답을 파싱하는 것이 전부다. 규격을 벗어난 응답은 그대로 실패한다 —
+ * 서버가 규격을 지키게 하는 것이 클라이언트가 우회하는 것보다 낫다.
+ */
+export interface LlmClient {
+	readonly model: string;
+	/** 이번 실행에서 누적된 토큰 사용량 */
+	readonly totalUsage: TokenUsage;
+	/**
+	 * 도구를 제시하고 모델이 호출한 결과를 받아온다.
+	 *
+	 * GSML 게이트웨이는 OpenAI의 `tools` 파라미터를 조용히 버린다(HTTP 200에 에러도 없다) —
+	 * 상류 llama.cpp가 `--jinja` 없이 떠 있어 채팅 템플릿의 도구 분기가 실행되지 않기 때문이다.
+	 * 그래서 템플릿이 해줬어야 할 일을 여기서 직접 한다: 도구 정의를 system 메시지로 주입하고
+	 * 응답의 `<tool_call>` XML을 직접 파싱한다. 자세한 근거는 buildToolSystemBlock 주석에 있다.
+	 */
+	chatWithTools(
+		messages: ChatMessage[],
+		tools: ToolDefinition[],
+		options?: ChatOptions,
+	): Promise<ToolChatResult>;
+}
+
+export function createLlmClient(options: LlmClientOptions): LlmClient {
+	if (!options.apiKey) throw new LlmError("API 키가 비어 있다");
+	const apiKey = options.apiKey;
+	const baseUrl = (options.baseUrl ?? "http://ssh.gsmsv.site:26145/v1").replace(
+		/\/+$/,
+		"",
+	);
+	const model = options.model;
+	const timeoutMs = options.timeoutMs ?? 600_000;
+
+	const totalUsage: TokenUsage = {
+		prompt_tokens: 0,
+		completion_tokens: 0,
+		total_tokens: 0,
+	};
+
+	async function chat(
+		messages: ChatMessage[],
+		chatOptions: ChatOptions = {},
+	): Promise<string> {
+		const maxTokens = chatOptions.maxTokens ?? 8192;
+		const body: Record<string, unknown> = {
+			model,
+			messages,
+			stream: false,
+			temperature: chatOptions.temperature ?? 0.2,
+			max_tokens: maxTokens,
+		};
+
+		let response: Response;
+		try {
+			response = await fetch(`${baseUrl}/chat/completions`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${apiKey}`,
+				},
+				body: JSON.stringify(body),
+				signal: AbortSignal.timeout(timeoutMs),
+			});
+		} catch (error) {
+			throw new LlmError(
+				`모델 서버 네트워크 오류: ${describeNetworkError(error)}`,
+			);
+		}
+
+		const text = await response.text();
+		if (!response.ok)
+			throw new LlmError(
+				`모델 서버 HTTP ${response.status}: ${text.slice(0, 500)}`,
+			);
+
+		let data: ChatCompletion;
+		try {
+			data = JSON.parse(text) as ChatCompletion;
+		} catch {
+			throw new LlmError(`모델 응답이 JSON이 아니다: ${text.slice(0, 300)}`);
+		}
+		if (data.error?.message)
+			throw new LlmError(`모델 오류: ${data.error.message}`);
+
+		if (data.usage) {
+			totalUsage.prompt_tokens += data.usage.prompt_tokens ?? 0;
+			totalUsage.completion_tokens += data.usage.completion_tokens ?? 0;
+			totalUsage.total_tokens += data.usage.total_tokens ?? 0;
+		}
+
+		const choice = data.choices?.[0];
+		const finishReason = choice?.finish_reason ?? "unknown";
+		const usage = data.usage;
+		log.info(
+			`모델 응답 — finish_reason=${finishReason}` +
+				(usage
+					? `, 토큰 ${usage.prompt_tokens ?? 0} in / ${usage.completion_tokens ?? 0} out`
+					: ""),
+		);
+
+		// max_tokens에서 잘린 응답은 `<tool_call>` 이 닫히지 않아 파싱에서 통째로 버려진다.
+		// 그러면 결과만 봐서는 모델이 도구를 안 부른 것과 구분되지 않으므로 여기서 남긴다.
+		if (finishReason === "length") {
+			log.warn(
+				`응답이 max_tokens(${maxTokens})에서 잘렸다 — 도구 호출이 온전하지 않을 수 있다`,
+			);
+		}
+
+		const content = choice?.message?.content ?? "";
+		if (!content.trim()) {
+			throw new LlmError(
+				`모델이 빈 응답을 반환했다 (finish_reason=${finishReason})`,
+			);
+		}
+		return content;
+	}
+
+	return {
+		model,
+		totalUsage,
+		async chatWithTools(messages, tools, chatOptions = {}) {
+			const content = await chat(
+				withToolSystemBlock(messages, tools),
+				chatOptions,
+			);
+			log.debug(`모델 원문 응답\n${content}`);
+			return parseToolCalls(stripThinkBlock(content));
+		},
+	};
+}
