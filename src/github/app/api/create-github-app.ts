@@ -1,6 +1,7 @@
 import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/core";
 import { retry } from "@octokit/plugin-retry";
+import { RequestError } from "@octokit/request-error";
 import { describeNetworkError } from "../../../net";
 import { normalizePrivateKey } from "../lib/normalize-private-key";
 import type { AppCredentials, GitHubApp } from "../model/types";
@@ -10,8 +11,8 @@ const RETRIES = 2;
 const RetryingOctokit = Octokit.plugin(retry);
 
 function retriesOf(error: unknown): string {
-	const count = (error as { request?: { request?: { retryCount?: number } } })
-		?.request?.request?.retryCount;
+	if (!(error instanceof RequestError)) return "";
+	const count = error.request.request?.retryCount;
 	return count ? `, 재시도 ${count}회` : "";
 }
 
