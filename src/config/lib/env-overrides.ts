@@ -5,7 +5,6 @@ import { SEVERITIES } from "../model/severity";
 export function envOverrides(): Partial<BotConfig> {
 	const env = process.env;
 	const out: Partial<BotConfig> = {};
-	if (env["REVIEWBOT_MODEL"]) out.model = env["REVIEWBOT_MODEL"];
 	if (env["REVIEWBOT_BASE_URL"]) out.baseUrl = env["REVIEWBOT_BASE_URL"];
 	if (env["REVIEWBOT_LANGUAGE"]) out.language = env["REVIEWBOT_LANGUAGE"];
 	if (env["REVIEWBOT_TRIGGER_PREFIX"])

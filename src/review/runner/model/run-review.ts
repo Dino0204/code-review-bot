@@ -30,9 +30,6 @@ export async function runReview(
 			renderPlainComment(
 				"🤖 코드 리뷰",
 				"리뷰할 변경 사항이 없다. (제외 패턴에 걸렸거나 바이너리/삭제만 포함된 PR)",
-				{
-					model: llm.model,
-				},
 			),
 		);
 		return { posted: true, findings: 0, inline: 0 };
@@ -89,7 +86,6 @@ export async function runReview(
 		inline,
 		overflow,
 		{
-			model: llm.model,
 			reviewedFiles: context.diffFiles.length,
 			skippedFiles,
 			promptTokens: llm.totalUsage.prompt_tokens,

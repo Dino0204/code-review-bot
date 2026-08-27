@@ -1,9 +1,7 @@
 import type { BotConfig } from "../model/bot-config";
 
 export const DEFAULT_CONFIG: BotConfig = {
-	// GSML 게이트웨이는 모델 하나만 서빙한다. 모델 ID는 /v1/models 로 확인한다.
-	model: "darwin-35b-q4_k_m.gguf",
-	// 단일 모델이라 넘어갈 곳이 없다. 여러 모델을 서빙하는 게이트웨이로 바꾸면 여기에 채운다.
+	// GSML 게이트웨이는 모델 하나만 서빙하고 요청 body의 model 필드를 무시한다.
 	baseUrl: "http://ssh.gsmsv.site:26145/v1",
 	language: "ko",
 	temperature: 0.2,

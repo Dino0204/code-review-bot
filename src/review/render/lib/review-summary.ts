@@ -58,7 +58,6 @@ export function renderReviewSummary(
 	}
 
 	const stats = [
-		`모델 \`${meta.model}\``,
 		`파일 ${meta.reviewedFiles}개 리뷰${meta.skippedFiles ? ` (${meta.skippedFiles}개 제외)` : ""}`,
 		meta.chunks > 1 ? `${meta.chunks}개 청크로 분할` : "",
 		meta.promptTokens !== undefined

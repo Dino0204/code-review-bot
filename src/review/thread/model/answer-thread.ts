@@ -16,7 +16,7 @@ export async function answerThread(
 	pr: PullRequestInfo,
 	commentId: number,
 ): Promise<ThreadOutcome> {
-	const { github, llm, config } = deps;
+	const { github, llm } = deps;
 
 	const thread = await github.getReviewThread(pr.number, commentId);
 	if (!thread) {
@@ -35,13 +35,11 @@ export async function answerThread(
 	await github.replyToReviewComment(
 		pr.number,
 		thread.rootId,
-		renderThreadReply(reply.reply, reply.suggestion ?? undefined, {
-			model: llm.model,
-		}),
+		renderThreadReply(reply.reply, reply.suggestion ?? undefined),
 	);
 
 	log.info(
-		`#${pr.number} 쓰레드 응답 완료 (토큰 ${llm.totalUsage.total_tokens.toLocaleString()}, 모델 ${config.model})`,
+		`#${pr.number} 쓰레드 응답 완료 (토큰 ${llm.totalUsage.total_tokens.toLocaleString()})`,
 	);
 	return { replied: true, degraded };
 }

@@ -13,7 +13,7 @@ export function pickFileConfig(raw: unknown): Partial<BotConfig> {
 	const r = raw as Record<string, unknown>;
 	const out: Partial<BotConfig> = {};
 
-	const strings = ["model", "baseUrl", "language", "triggerPrefix"] as const;
+	const strings = ["baseUrl", "language", "triggerPrefix"] as const;
 	for (const key of strings) {
 		if (typeof r[key] === "string") out[key] = r[key] as string;
 	}

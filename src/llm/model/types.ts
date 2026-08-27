@@ -41,6 +41,5 @@ export interface ToolChatResult {
 export interface LlmClientOptions {
 	apiKey: string;
 	baseUrl?: string;
-	model: string;
 	timeoutMs?: number;
 }

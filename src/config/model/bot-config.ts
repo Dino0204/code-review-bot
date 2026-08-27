@@ -1,8 +1,6 @@
 import type { Severity } from "./severity";
 
 export interface BotConfig {
-	/** 모델 ID */
-	model: string;
 	/** OpenAI 호환 API base URL (버전 경로까지 포함) */
 	baseUrl: string;
 	/** 리뷰 코멘트 언어 */

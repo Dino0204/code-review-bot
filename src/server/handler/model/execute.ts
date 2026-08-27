@@ -85,7 +85,6 @@ export async function execute(
 	const llm = createLlmClient({
 		apiKey: deps.gsmlApiKey,
 		baseUrl: config.baseUrl,
-		model: config.model,
 	});
 
 	try {

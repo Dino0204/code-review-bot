@@ -10,7 +10,6 @@ import { suggestionBlock } from "./suggestion-block";
 export function renderThreadReply(
 	reply: string,
 	suggestion: string | undefined,
-	meta: { model: string },
 ): string {
 	const body = reply.trim();
 	return [
@@ -19,7 +18,5 @@ export function renderThreadReply(
 			? `${body.slice(0, MAX_REPLY_CHARS)}\n\n_(답변이 너무 길어 잘렸다)_`
 			: body,
 		...suggestionBlock(suggestion),
-		"",
-		`<sub>모델 \`${meta.model}\`</sub>`,
 	].join("\n");
 }

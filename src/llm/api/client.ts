@@ -33,7 +33,6 @@ interface ChatCompletion {
  * 서버가 규격을 지키게 하는 것이 클라이언트가 우회하는 것보다 낫다.
  */
 export interface LlmClient {
-	readonly model: string;
 	/** 이번 실행에서 누적된 토큰 사용량 */
 	readonly totalUsage: TokenUsage;
 	/**
@@ -58,7 +57,6 @@ export function createLlmClient(options: LlmClientOptions): LlmClient {
 		/\/+$/,
 		"",
 	);
-	const model = options.model;
 	const timeoutMs = options.timeoutMs ?? 600_000;
 
 	const totalUsage: TokenUsage = {
@@ -72,8 +70,8 @@ export function createLlmClient(options: LlmClientOptions): LlmClient {
 		chatOptions: ChatOptions = {},
 	): Promise<string> {
 		const maxTokens = chatOptions.maxTokens ?? 8192;
+		// GSML 게이트웨이는 모델 하나만 서빙하고 body의 model 필드를 무시하므로 넘기지 않는다.
 		const body: Record<string, unknown> = {
-			model,
 			messages,
 			stream: false,
 			temperature: chatOptions.temperature ?? 0.2,
@@ -146,7 +144,6 @@ export function createLlmClient(options: LlmClientOptions): LlmClient {
 	}
 
 	return {
-		model,
 		totalUsage,
 		async chatWithTools(messages, tools, chatOptions = {}) {
 			const content = await chat(

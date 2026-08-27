@@ -4,7 +4,6 @@
 #   - `sandrone:` : sandrone-code-review-bot 에만 적용 — 이 봇은 읽지 않는다
 # 모르는 키는 그냥 무시한다. 상대 봇 전용 키(tone, summaryPlacement 등)를 최상위에 둬도 안전하다.
 
-model: darwin-35b-q4_k_m.gguf
 language: ko
 temperature: 0.2
 maxOutputTokens: 16384
