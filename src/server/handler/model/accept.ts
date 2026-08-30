@@ -1,10 +1,10 @@
-import { BOT_MENTION } from "../../../config/consts/bot";
-import { isBotActor } from "../../../github/event/lib/actor";
-import { parseTrigger } from "../../../github/event/lib/parse-trigger";
-import { repoRefFrom } from "../../../github/event/lib/repo-ref-from";
-import type { RawEvent, Trigger } from "../../../github/event/model/types";
-import { log } from "../../../logger";
-import { hasMention } from "../../../review/commands/lib/has-mention";
+import { BOT_MENTION } from "@/config/consts/bot";
+import { isBotActor } from "@/github/event/lib/actor";
+import { parseTrigger } from "@/github/event/lib/parse-trigger";
+import { repoRefFrom } from "@/github/event/lib/repo-ref-from";
+import type { RawEvent, Trigger } from "@/github/event/model/types";
+import { log } from "@/logger";
+import { hasMention } from "@/review/commands/lib/has-mention";
 import { AUTO_REVIEW_PR_ACTIONS } from "../consts/auto-review-actions";
 import { execute } from "./execute";
 import type { AcceptedEvent, HandlerDeps } from "./types";

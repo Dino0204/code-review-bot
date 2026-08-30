@@ -1,5 +1,5 @@
-import { log } from "../../logger";
-import { describeNetworkError } from "../../net";
+import { log } from "@/logger";
+import { describeNetworkError } from "@/net";
 import { parseToolCalls } from "../lib/parse-tool-calls";
 import { stripThinkBlock } from "../lib/strip-think-block";
 import { withToolSystemBlock } from "../lib/tool-system-block";

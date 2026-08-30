@@ -1,6 +1,6 @@
-import type { PullRequestInfo } from "../../../github/client/model/types";
-import { log } from "../../../logger";
-import { renderThreadReply } from "../../render/lib/thread-reply";
+import type { PullRequestInfo } from "@/github/client/model/types";
+import { log } from "@/logger";
+import { renderThreadReply } from "@/review/render/lib/thread-reply";
 import { loadExcerpt } from "./load-excerpt";
 import { requestReply } from "./request-reply";
 import type { ThreadDeps, ThreadOutcome } from "./types";

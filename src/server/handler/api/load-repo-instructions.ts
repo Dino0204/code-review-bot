@@ -1,7 +1,7 @@
-import { INSTRUCTION_FILES } from "../../../config/consts/files";
-import type { GitHubClient } from "../../../github/client/model/types";
-import { log } from "../../../logger";
-import type { RepoInstructions } from "../../../review/prompt/model/types";
+import { INSTRUCTION_FILES } from "@/config/consts/files";
+import type { GitHubClient } from "@/github/client/model/types";
+import { log } from "@/logger";
+import type { RepoInstructions } from "@/review/prompt/model/types";
 
 /**
  * 리포지토리의 코딩 지침 문서를 API로 읽는다. 후보 중 먼저 발견된 하나만 쓴다.

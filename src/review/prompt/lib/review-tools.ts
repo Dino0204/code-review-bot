@@ -1,6 +1,6 @@
-import type { BotConfig } from "../../../config/model/bot-config";
-import { SEVERITIES } from "../../../config/model/severity";
-import type { ToolDefinition } from "../../../llm/model/types";
+import type { BotConfig } from "@/config/model/bot-config";
+import { SEVERITIES } from "@/config/model/severity";
+import type { ToolDefinition } from "@/llm/model/types";
 import { FINDING_TOOL, READ_TOOL, SUMMARY_TOOL } from "../consts/tools";
 import { languageName } from "./language-name";
 

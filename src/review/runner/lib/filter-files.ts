@@ -1,6 +1,6 @@
 import { minimatch } from "minimatch";
-import type { BotConfig } from "../../../config/model/bot-config";
-import type { DiffFile } from "../../../github/diff/model/types";
+import type { BotConfig } from "@/config/model/bot-config";
+import type { DiffFile } from "@/github/diff/model/types";
 
 export function filterFiles(
 	files: DiffFile[],

@@ -1,7 +1,7 @@
-import { renderFileDiff } from "../../../github/diff/lib/render-file-diff";
-import type { ChatMessage } from "../../../llm/model/types";
-import { renderFileSource } from "../../source/lib/render-file-source";
-import type { FileSource } from "../../source/model/types";
+import { renderFileDiff } from "@/github/diff/lib/render-file-diff";
+import type { ChatMessage } from "@/llm/model/types";
+import { renderFileSource } from "@/review/source/lib/render-file-source";
+import type { FileSource } from "@/review/source/model/types";
 import { FINDING_TOOL, SUMMARY_TOOL } from "../consts/tools";
 import { instructionsSection } from "../lib/instructions-section";
 import { prMeta } from "../lib/pr-meta";

@@ -4,6 +4,9 @@
 		"module": "ESNext",
 		"moduleResolution": "bundler",
 		"lib": ["ES2023"],
+		"paths": {
+			"@/*": ["./src/*"]
+		},
 		"types": ["node"],
 		"strict": true,
 		"noUncheckedIndexedAccess": true,

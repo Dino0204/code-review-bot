@@ -1,4 +1,4 @@
-import type { BotConfig } from "../../../config/model/bot-config";
+import type { BotConfig } from "@/config/model/bot-config";
 import { FINDING_TOOL, READ_TOOL, SUMMARY_TOOL } from "../consts/tools";
 import { languageName } from "./language-name";
 

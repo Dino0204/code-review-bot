@@ -1,6 +1,6 @@
-import type { BotConfig } from "../../../config/model/bot-config";
-import { renderFileDiff } from "../../../github/diff/lib/render-file-diff";
-import type { DiffFile } from "../../../github/diff/model/types";
+import type { BotConfig } from "@/config/model/bot-config";
+import { renderFileDiff } from "@/github/diff/lib/render-file-diff";
+import type { DiffFile } from "@/github/diff/model/types";
 
 /**
  * diff가 프롬프트 예산을 넘으면 파일 단위로 쪼갠다.

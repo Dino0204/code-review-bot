@@ -21,6 +21,7 @@ gemini-code-assist를 대체하는 것이 목적이며, 리뷰 대상 코드는 
 - TypeScript strict 모드다. `any` 로 타입을 우회하지 않는다.
 - 외부 API 호출에는 타임아웃과 재시도를 둔다.
 - 사용자 입력을 가공 없이 로그에 남기지 않는다.
+- 슬라이스를 넘는 import 는 `@/` 별칭(`tsconfig.json` 의 `paths`, `@/*` → `src/*`)을 쓴다. 같은 슬라이스 안은 상대 경로(`./`, `../`)를 유지한다.
 
 이 문서는 리뷰 봇이 자기 자신을 리뷰할 때의 기준이기도 하다 — 봇은 리뷰 대상 리포지토리의
 `AGENTS.md` 또는 `CLAUDE.md` 를 읽어 프롬프트에 싣는다(`src/config.ts` 의 `INSTRUCTION_FILES`).

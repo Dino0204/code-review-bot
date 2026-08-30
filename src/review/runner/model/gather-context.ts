@@ -1,13 +1,13 @@
-import type { BotConfig } from "../../../config/model/bot-config";
+import type { BotConfig } from "@/config/model/bot-config";
 import type {
 	GitHubClient,
 	PullRequestInfo,
-} from "../../../github/client/model/types";
-import { parseUnifiedDiff } from "../../../github/diff/lib/parse-unified-diff";
-import type { DiffFile } from "../../../github/diff/model/types";
-import { log } from "../../../logger";
-import { buildFileSource } from "../../source/lib/build-file-source";
-import type { FileSource } from "../../source/model/types";
+} from "@/github/client/model/types";
+import { parseUnifiedDiff } from "@/github/diff/lib/parse-unified-diff";
+import type { DiffFile } from "@/github/diff/model/types";
+import { log } from "@/logger";
+import { buildFileSource } from "@/review/source/lib/build-file-source";
+import type { FileSource } from "@/review/source/model/types";
 import { filterFiles } from "../lib/filter-files";
 import type { GatheredContext, RunnerDeps } from "./types";
 

@@ -1,15 +1,15 @@
-import type { BotConfig } from "../../../config/model/bot-config";
+import type { BotConfig } from "@/config/model/bot-config";
 import type {
 	InlineComment,
 	PullRequestInfo,
-} from "../../../github/client/model/types";
-import { log } from "../../../logger";
-import type { ReviewContext } from "../../prompt/model/types";
-import { renderFindingComment } from "../../render/lib/finding-comment";
-import { renderPlainComment } from "../../render/lib/plain-comment";
-import { renderReviewSummary } from "../../render/lib/review-summary";
-import type { ReviewResult } from "../../schema/model/review-result";
-import { sourceLength } from "../../source/lib/render-file-source";
+} from "@/github/client/model/types";
+import { log } from "@/logger";
+import type { ReviewContext } from "@/review/prompt/model/types";
+import { renderFindingComment } from "@/review/render/lib/finding-comment";
+import { renderPlainComment } from "@/review/render/lib/plain-comment";
+import { renderReviewSummary } from "@/review/render/lib/review-summary";
+import type { ReviewResult } from "@/review/schema/model/review-result";
+import { sourceLength } from "@/review/source/lib/render-file-source";
 import { chunkFiles } from "../lib/chunk-files";
 import { mergeResults } from "../lib/merge-results";
 import { prepareFindings } from "../lib/prepare-findings";

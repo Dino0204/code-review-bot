@@ -1,4 +1,4 @@
-import type { PullRequestInfo } from "../../../github/client/model/types";
+import type { PullRequestInfo } from "@/github/client/model/types";
 import { truncate } from "./truncate";
 
 export function prMeta(pr: PullRequestInfo): string {

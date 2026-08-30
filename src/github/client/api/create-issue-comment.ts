@@ -1,5 +1,5 @@
 import type { Octokit } from "@octokit/rest";
-import type { RepoRef } from "../../event/model/types";
+import type { RepoRef } from "@/github/event/model/types";
 
 export async function createIssueComment(
 	octokit: Octokit,

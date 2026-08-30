@@ -1,5 +1,5 @@
-import type { BotConfig } from "../../../config/model/bot-config";
-import type { ToolDefinition } from "../../../llm/model/types";
+import type { BotConfig } from "@/config/model/bot-config";
+import type { ToolDefinition } from "@/llm/model/types";
 import { REPLY_TOOL } from "../consts/tools";
 import { languageName } from "./language-name";
 

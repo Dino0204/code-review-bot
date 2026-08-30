@@ -1,15 +1,15 @@
 import type {
 	PullRequestInfo,
 	ReviewThread,
-} from "../../../github/client/model/types";
-import type { ToolCall } from "../../../llm/model/types";
-import { log } from "../../../logger";
-import { REPLY_TOOL } from "../../prompt/consts/tools";
-import { replyTools } from "../../prompt/lib/reply-tools";
-import { buildReplyMessages } from "../../prompt/model/reply-messages";
-import type { FileExcerpt } from "../../prompt/model/types";
-import type { RawReply } from "../../schema/model/reply";
-import { replySchema } from "../../schema/model/reply";
+} from "@/github/client/model/types";
+import type { ToolCall } from "@/llm/model/types";
+import { log } from "@/logger";
+import { REPLY_TOOL } from "@/review/prompt/consts/tools";
+import { replyTools } from "@/review/prompt/lib/reply-tools";
+import { buildReplyMessages } from "@/review/prompt/model/reply-messages";
+import type { FileExcerpt } from "@/review/prompt/model/types";
+import type { RawReply } from "@/review/schema/model/reply";
+import { replySchema } from "@/review/schema/model/reply";
 import type { ThreadDeps } from "./types";
 
 /** 도구를 부르지 않은 응답에 붙이는 교정 지시. 형식은 도구 블록에 이미 있으므로 되풀이하지 않는다. */

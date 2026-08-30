@@ -1,4 +1,4 @@
-import type { GitHubApp } from "../../../github/app/model/types";
+import type { GitHubApp } from "@/github/app/model/types";
 
 export interface HandlerDeps {
 	app: GitHubApp;

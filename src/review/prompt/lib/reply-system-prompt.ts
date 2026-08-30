@@ -1,5 +1,5 @@
-import { BOT_MENTION } from "../../../config/consts/bot";
-import type { BotConfig } from "../../../config/model/bot-config";
+import { BOT_MENTION } from "@/config/consts/bot";
+import type { BotConfig } from "@/config/model/bot-config";
 import { REPLY_TOOL } from "../consts/tools";
 import { languageName } from "./language-name";
 

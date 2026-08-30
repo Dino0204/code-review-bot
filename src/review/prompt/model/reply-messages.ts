@@ -1,5 +1,5 @@
-import { BOT_MENTION } from "../../../config/consts/bot";
-import type { ChatMessage } from "../../../llm/model/types";
+import { BOT_MENTION } from "@/config/consts/bot";
+import type { ChatMessage } from "@/llm/model/types";
 import {
 	MAX_THREAD_COMMENT_CHARS,
 	MAX_THREAD_COMMENTS,
