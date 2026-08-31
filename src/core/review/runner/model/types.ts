@@ -12,6 +12,8 @@ export interface RunnerDeps {
 	config: BotConfig;
 	/** 리포지토리 지침 문서. 없는 리포지토리도 있으므로 선택 사항이다 */
 	instructions?: RepoInstructions;
+	/** 고쳐 쓸 요약 코멘트 id. 없으면 새로 단다 */
+	summaryCommentId?: number;
 	/**
 	 * 이미 리뷰한 파일의 해시. 주면 달라진 파일만 본다.
 	 *
@@ -36,4 +38,6 @@ export interface ReviewOutcome {
 	inline: number;
 	/** 리뷰를 마친 파일의 마커 — 부른 쪽이 저장한다 */
 	markers: Map<string, string>;
+	/** 이번에 쓰거나 새로 단 요약 코멘트 id — 다음 리뷰가 이 자리를 고쳐 쓴다 */
+	summaryCommentId?: number;
 }

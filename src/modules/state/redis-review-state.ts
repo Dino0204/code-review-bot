@@ -1,6 +1,11 @@
 import type { Redis } from "ioredis";
 import type { PrRef, ReviewState } from "@/core/ports/review-state";
-import { allKeys, markerKey, STATE_TTL_SECONDS } from "./consts/keys";
+import {
+	allKeys,
+	markerKey,
+	STATE_TTL_SECONDS,
+	summaryKey,
+} from "./consts/keys";
 
 /**
  * 리뷰 상태를 Redis 에 담는 구현.
@@ -24,6 +29,22 @@ export function createRedisReviewState(redis: Redis): ReviewState {
 				.hset(key, Object.fromEntries(hashes))
 				.expire(key, STATE_TTL_SECONDS)
 				.exec();
+		},
+
+		async summaryCommentId(ref: PrRef): Promise<number | undefined> {
+			const stored = await redis.get(summaryKey(ref));
+			if (stored === null) return undefined;
+			const id = Number(stored);
+			return Number.isInteger(id) ? id : undefined;
+		},
+
+		async setSummaryCommentId(ref: PrRef, commentId: number): Promise<void> {
+			await redis.set(
+				summaryKey(ref),
+				String(commentId),
+				"EX",
+				STATE_TTL_SECONDS,
+			);
 		},
 
 		async clear(ref: PrRef): Promise<void> {

@@ -2,6 +2,7 @@ import type { BotConfig } from "@/core/config/model/bot-config";
 import type { InlineComment, PullRequestInfo } from "@/core/github/port";
 import { log } from "@/core/ports/logger";
 import type { ReviewContext } from "@/core/review/prompt/model/types";
+import { INLINE_REVIEW_BODY } from "@/core/review/render/consts/marker";
 import { renderFindingComment } from "@/core/review/render/lib/finding-comment";
 import { renderPlainComment } from "@/core/review/render/lib/plain-comment";
 import { renderReviewSummary } from "@/core/review/render/lib/review-summary";
@@ -13,6 +14,7 @@ import { prepareFindings } from "../lib/prepare-findings";
 import { gatherContext } from "./gather-context";
 import { requestReview } from "./request-review";
 import type { ReviewOutcome, RunnerDeps } from "./types";
+import { upsertSummary } from "./upsert-summary";
 
 export async function runReview(
 	deps: RunnerDeps,
@@ -87,10 +89,23 @@ export async function runReview(
 		};
 	});
 
+	// 인라인을 먼저 보낸다 — 등록에 실패한 지적을 요약에 실어야 통째로 사라지지 않는다
+	const { posted, degraded } = comments.length
+		? await github.createReview(
+				pr.number,
+				pr.headSha,
+				INLINE_REVIEW_BODY,
+				comments,
+			)
+		: { posted: 0, degraded: false };
+	if (degraded) {
+		log.warn("인라인 코멘트가 등록되지 않아 요약에 모아 싣는다");
+	}
+
 	const body = renderReviewSummary(
 		merged,
-		inline,
-		overflow,
+		degraded ? [] : inline,
+		degraded ? [...overflow, ...inline] : overflow,
 		{
 			reviewedFiles: context.diffFiles.length,
 			skippedFiles,
@@ -102,20 +117,18 @@ export async function runReview(
 		config,
 	);
 
-	const { posted, degraded } = await github.createReview(
+	const summaryCommentId = await upsertSummary(
+		github,
 		pr.number,
-		pr.headSha,
 		body,
-		comments,
+		deps.summaryCommentId,
 	);
-	if (degraded) {
-		log.warn("인라인 코멘트가 등록되지 않아 요약만 게시했다");
-	}
 
 	return {
 		posted: true,
 		findings: inline.length + overflow.length,
 		inline: posted,
 		markers: hashes,
+		summaryCommentId,
 	};
 }

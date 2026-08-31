@@ -17,6 +17,9 @@ export interface ReviewState {
 	markers(ref: PrRef): Promise<Map<string, string>>;
 	/** 이번에 리뷰한 파일만 덮어쓴다 — 손대지 않은 파일의 마커는 그대로 남는다 */
 	saveMarkers(ref: PrRef, hashes: Map<string, string>): Promise<void>;
+	/** 고쳐 쓸 요약 코멘트의 id. 아직 안 달았으면 undefined */
+	summaryCommentId(ref: PrRef): Promise<number | undefined>;
+	setSummaryCommentId(ref: PrRef, commentId: number): Promise<void>;
 	/** PR 이 닫히거나 머지되면 이 PR 의 상태를 통째로 지운다 */
 	clear(ref: PrRef): Promise<void>;
 }

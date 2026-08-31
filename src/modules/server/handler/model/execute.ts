@@ -116,10 +116,14 @@ export async function execute(
 			config,
 			instructions,
 			markers,
+			// 요약은 사람이 부른 리뷰에서도 같은 자리를 고쳐 쓴다 — PR 마다 요약은 하나다
+			summaryCommentId: await deps.state.summaryCommentId(prRef),
 		};
 		const outcome = await runReview(runnerDeps, pr);
 		// 게시까지 끝난 뒤에 남긴다 — 게시에 실패한 파일을 "봤다"고 적으면 영영 안 보게 된다
 		await deps.state.saveMarkers(prRef, outcome.markers);
+		if (outcome.summaryCommentId !== undefined)
+			await deps.state.setSummaryCommentId(prRef, outcome.summaryCommentId);
 		log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건`);
 	} catch (error) {
 		// 실패 사실을 사람이 부른 자리에서 바로 볼 수 있게 남긴다
