@@ -12,8 +12,6 @@ export interface ServerConfig {
 	githubPrivateKey: string;
 	/** provider 체인 정의 파일의 경로 */
 	providersFile: string;
-	/** 로그를 JSON 한 줄씩 내보낼지 — 수집기에 넣을 때 켠다 */
-	jsonLogs: boolean;
 	/** 큐와 리뷰 상태를 담아두는 Redis 주소 */
 	redisUrl: string;
 	/** 리포지토리 설정 파일 위에 얹을 값 — 서버 운영자가 환경변수로 지정한다 */
@@ -42,6 +40,8 @@ const schema = z
 		GITHUB_APP_PRIVATE_KEY: text.optional(),
 		GITHUB_APP_PRIVATE_KEY_PATH: text.optional(),
 		PROVIDERS_FILE: text.default("./providers.yml"),
+		// 로거는 DI 밖에서 이 값을 직접 읽는다(`modules/logger.ts`). 여기서는 형식만 잡는다 —
+		// 오타를 넣으면 조용히 text 로 도는 대신 부팅에서 멈춘다.
 		LOG_FORMAT: z.enum(["text", "json"]).default("text"),
 		// compose 안에서는 서비스 이름으로 붙는다. 로컬에서 그냥 띄우면 기본값이 맞는다.
 		REDIS_URL: text.default("redis://127.0.0.1:6379"),
@@ -115,7 +115,6 @@ export const serverConfig = registerAs("server", (): ServerConfig => {
 		githubAppId: env.GITHUB_APP_ID,
 		githubPrivateKey: privateKey,
 		providersFile: env.PROVIDERS_FILE,
-		jsonLogs: env.LOG_FORMAT === "json",
 		redisUrl: env.REDIS_URL,
 		repoOverrides: repoOverrides(env),
 	};

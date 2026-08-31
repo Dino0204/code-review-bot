@@ -34,7 +34,11 @@ export class ReviewProcessor extends WorkerHost {
 					(job.finishedOn - (job.processedOn ?? job.finishedOn)) / 1000,
 				)
 			: 0;
-		log.info(`큐: ${job.name} 완료 (${seconds}초)`);
+		log.info(`큐: ${job.name} 완료 (${seconds}초)`, {
+			queueJob: job.name,
+			seconds,
+			attempt: job.attemptsMade + 1,
+		});
 	}
 
 	@OnWorkerEvent("failed")
@@ -46,6 +50,12 @@ export class ReviewProcessor extends WorkerHost {
 			made < attempts ? ` — ${made}/${attempts}, 다시 시도한다` : "";
 		log.error(
 			`큐: ${job?.name ?? "(알 수 없는 잡)"} 실패${retrying} — ${error.message}`,
+			{
+				queueJob: job?.name,
+				attempt: made,
+				attempts,
+				retrying: made < attempts,
+			},
 		);
 	}
 

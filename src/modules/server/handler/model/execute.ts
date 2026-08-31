@@ -41,6 +41,8 @@ export async function execute(
 ): Promise<void> {
 	const slug = `${owner}/${repo}`;
 	const prRef = { owner, repo, pr: trigger.pr };
+	// 잡 하나를 관통해 붙는 값들 — 로그를 PR 단위로 모을 수 있어야 한다
+	const job = { owner, repo, pr: trigger.pr, trigger: trigger.kind };
 	const token = await deps.app.installationToken(installationId);
 	const github = createGitHubClient(token, { owner, repo });
 
@@ -55,6 +57,7 @@ export async function execute(
 		if (!trusted) {
 			log.warn(
 				`${slug}: ${trigger.author}(${trigger.association})에게 쓰기 권한이 없어 명령을 무시한다`,
+				{ ...job, association: trigger.association },
 			);
 			return;
 		}
@@ -92,6 +95,7 @@ export async function execute(
 		if (intent.kind === "reply") {
 			log.info(
 				`${slug}#${pr.number} 쓰레드 응답 시작 (코멘트 ${intent.commentId})`,
+				{ ...job, intent: "reply", commentId: intent.commentId },
 			);
 			const outcome = await answerThread(
 				{ github, chain, config, instructions },
@@ -103,7 +107,11 @@ export async function execute(
 			return;
 		}
 
-		log.info(`${slug}#${pr.number} "${pr.title}" 리뷰 시작`);
+		log.info(`${slug}#${pr.number} "${pr.title}" 리뷰 시작`, {
+			...job,
+			intent: "review",
+			incremental: trigger.kind === "pull_request",
+		});
 		// 사람이 부른 리뷰는 처음부터 다시 본다 — 같은 코드를 한 번 더 봐달라는 뜻이다.
 		// 자동 리뷰(푸시·오픈)만 마커를 보고 달라진 파일로 좁힌다.
 		const markers =
@@ -126,7 +134,13 @@ export async function execute(
 		await deps.state.addPostedKeys(prRef, outcome.postedKeys);
 		if (outcome.summaryCommentId !== undefined)
 			await deps.state.setSummaryCommentId(prRef, outcome.summaryCommentId);
-		log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건`);
+		log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건`, {
+			...job,
+			findings: outcome.findings,
+			inline: outcome.inline,
+			reviewedFiles: outcome.markers.size,
+			failedFiles: outcome.failedFiles.length,
+		});
 
 		// 남은 파일은 재시도에 맡긴다. 여기까지 저장이 끝났으므로 다음 시도는 못 본 파일만
 		// 다시 묶고, 이미 단 코멘트도 다시 달지 않는다.
@@ -138,7 +152,10 @@ export async function execute(
 		// 실패 사실을 사람이 부른 자리에서 바로 볼 수 있게 남긴다.
 		// 재시도가 남았으면 알리지 않는다 — 어차피 다시 도는 일을 코멘트로 세 번 알릴 이유가 없다.
 		const message = error instanceof Error ? error.message : String(error);
-		log.error(`${slug}#${pr.number} 실패: ${message}`);
+		log.error(`${slug}#${pr.number} 실패: ${message}`, {
+			...job,
+			lastAttempt,
+		});
 		if (lastAttempt)
 			await reportFailure(github, trigger, intent, message).catch(
 				(commentError: unknown) =>
