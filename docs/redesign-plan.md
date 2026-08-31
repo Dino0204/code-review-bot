@@ -148,11 +148,25 @@ GitHub 웹훅
 | `rb:posted:{owner}/{repo}#{pr}` | Set | 이미 게시한 dedupeKey | 30일 |
 | `rb:summary:{owner}/{repo}#{pr}` | String | 요약 issue comment id | 30일 |
 | `rb:cooldown:{provider}` | String | cooldown 사유 | 사유별 (429는 분 단위, 일일 한도는 시간 단위) |
-| BullMQ `review` 큐 | — | jobId = `{owner}/{repo}#{pr}` | — |
-| BullMQ `thread` 큐 | — | jobId = 코멘트 id | — |
+| BullMQ `review` 큐 | — | deduplication id = `{owner}/{repo}#{pr}` (쓰레드는 `…#{pr}@{코멘트 id}`) | — |
 
 PR이 closed/merged 되면 `rb:*:{owner}/{repo}#{pr}` 를 지운다. TTL은 그 이벤트를 놓쳤을
 때의 안전망이다.
+
+**구현하며 정한 것**(5~8단계):
+
+- 큐는 하나다. 쓰레드 답글도 같은 `review` 큐에 들어가고 dedup id 로만 갈린다 — 큐를 나누면
+  워커도 나뉘는데, 모델 슬롯이 하나라 어차피 순서대로 돈다.
+- BullMQ 5.x 의 `deduplication` 을 그대로 쓴다(설치된 6.3). `replace: true` 는 **지연 중인**
+  잡을 새 잡으로 갈아치우므로 푸시 디바운스가 되고, `keepLastIfActive: true` 는 이미 실행 중이면
+  마지막 요청 하나만 뒤에 세운다. jobId 는 안 쓴다 — 완료/실패한 잡이 id 를 붙잡아 다음 이벤트를
+  막는 문제가 없어진다. dedup 키는 잡이 끝나면 지워진다(TTL 없이 SET 하고 `moveToFinished` 가 DEL).
+- 푸시 디바운스는 60초(`PUSH_DEBOUNCE_MS`). `synchronize` 를 자동 리뷰 대상에 넣었다 —
+  증분이 붙어 이미 본 파일은 다시 안 보내므로 커밋마다 돌려도 낭비가 아니다.
+- 재시도는 4회, 지수 백오프 60초부터(`JOB_ATTEMPTS`/`JOB_BACKOFF_MS`). 실패를 PR 코멘트로
+  알리는 것은 **마지막 시도에서만** 한다.
+- 부분 실패는 받은 만큼 게시하고, 못 본 파일만 마커에서 빼고 잡을 실패시킨다. 재시도가
+  마커·`rb:posted` 덕분에 못 본 파일만 다시 묶고 이미 단 코멘트는 다시 달지 않는다.
 
 ## 6. providers.yml
 
@@ -280,10 +294,10 @@ classifyError(error: unknown): ErrorClass
 | 2 | hunk 해시 + `complete` 플래그 추가 | 예 | 완료 — 스모크 확인. **큰 PR 로 실제 확인 필요** |
 | 3 | tsc 빌드 전환(CJS), Dockerfile 멀티스테이지 조정 | 예 | 완료 — 빌드·실행 확인. **도커 이미지 빌드는 미검증**(로컬 데몬 꺼짐, CI 가 확인) |
 | 4 | Nest 스캐폴드 + `modules/` 어댑터, 기존 http-server 대체 | 예 | 완료 — 로컬 기동 후 서명 웹훅으로 ping·큐 적재·거절·종료 확인, 설정 검증 실패 경로 확인 |
-| 5 | Redis + BullMQ 도입, 인메모리 큐 제거, compose에 redis 추가 | 예 | 재기동 후 잡 재개 확인 |
-| 6 | 마커 저장소 + 증분 재리뷰 + push debounce | 예 | **실제 PR 필요** — 증분 판정 |
-| 7 | 요약 코멘트 edit 방식으로 전환 | 예 | 실제 PR 필요 |
-| 8 | 부분 실패 게시 + 백오프 재시도 | 예 | 실패 주입으로 확인 |
+| 5 | Redis + BullMQ 도입, 인메모리 큐 제거, compose에 redis 추가 | 예 | 완료 — 서버를 죽인 사이 넣은 잡이 재기동 후 처리됨, 형식 깨진 잡은 꺼내는 자리에서 정지 |
+| 6 | 마커 저장소 + 증분 재리뷰 + push debounce | 예 | 완료 — 줄만 밀린 파일은 재리뷰 안 함, synchronize 두 번에 지연 잡 1개, closed 에 상태 삭제 확인. **실제 PR 로 증분 판정 확인 필요** |
+| 7 | 요약 코멘트 edit 방식으로 전환 | 예 | 완료 — 가짜 클라이언트로 신규/갱신/삭제된 코멘트 재생성/인라인 실패 시 요약 흡수 확인. **실제 PR 필요** |
+| 8 | 부분 실패 게시 + 백오프 재시도 | 예 | 완료 — 청크 실패 주입 시 나머지 게시·실패 파일만 마커 제외·재시도에서 중복 코멘트 없음, 큐 재시도 3회 로그 확인 |
 | 9 | pi-ai 도입 + provider 체인 + failover, GSML 제거 | 예 | **실제 PR 필요** — 최대 변경 |
 | 10 | providers.yml + 구조화 로그 | 예 | — |
 | 11 | 쓰레드 답글을 새 구조로 이전 | 예 | 실제 PR 필요 |
@@ -299,11 +313,12 @@ classifyError(error: unknown): ErrorClass
   API surface 4종(OpenAI Completions/Responses, Anthropic Messages, Google Generative AI)을
   지원한다고 되어 있으니 Google은 native, 나머지 넷은 OpenAI 호환으로 붙을 것으로 보이나
   GLM·GitHub Models의 tool calling 응답 형식이 그대로 파싱되는지는 확인해야 한다.
-- **BullMQ의 debounce 방식.** BullMQ 5.x에 `deduplication` 옵션이 있는 것으로 알고 있으나
-  버전과 동작(기존 delayed 잡의 delay 갱신 여부)을 문서에서 확인한다. 안 되면 `jobId` +
-  `delay` 로 직접 구현한다.
 - **각 provider의 모델명·엔드포인트·무료 한도.** providers.yml의 `<확정 필요>` 자리다.
 이미 확인한 것 (다시 조사하지 않는다):
+
+- **BullMQ 의 debounce.** `deduplication: { id, replace: true, keepLastIfActive: true }` + `delay`
+  로 된다. `replace` 는 지연 중인 잡을 지우고 새 잡을 넣으므로 delay 가 새로 시작된다
+  (`addDelayedJob` 의 `deduplicateJob` 확인). 직접 구현할 필요 없다.
 
 - **pi-ai의 reasoning 처리 범위.** `packages/ai/src/api/openai-completions.ts:596` 에서
   `reasoning_content` / `reasoning` / `reasoning_text` 를 순서대로 보고 첫 비어있지 않은
