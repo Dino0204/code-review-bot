@@ -26,8 +26,17 @@ export function parseUnifiedDiff(raw: string): DiffFile[] {
 	let hunk: DiffHunk | undefined;
 	let oldCursor = 0;
 	let newCursor = 0;
+	// 헤더가 선언한 줄 수와 대조하려고 실제로 센다
+	let oldSeen = 0;
+	let newSeen = 0;
+
+	const closeHunk = (): void => {
+		if (!hunk) return;
+		hunk.complete = oldSeen === hunk.oldLines && newSeen === hunk.newLines;
+	};
 
 	const flushFile = (): void => {
+		closeHunk();
 		if (current) files.push(current);
 		current = undefined;
 		hunk = undefined;
@@ -100,6 +109,7 @@ export function parseUnifiedDiff(raw: string): DiffFile[] {
 
 		const header = HUNK_HEADER.exec(line);
 		if (header) {
+			closeHunk();
 			hunk = {
 				oldStart: Number(header[1]),
 				oldLines: header[2] === undefined ? 1 : Number(header[2]),
@@ -107,10 +117,14 @@ export function parseUnifiedDiff(raw: string): DiffFile[] {
 				newLines: header[4] === undefined ? 1 : Number(header[4]),
 				section: header[5] ?? "",
 				lines: [],
+				// 이 헝크의 마지막 줄을 지날 때 확정한다
+				complete: false,
 			};
 			current.hunks.push(hunk);
 			oldCursor = hunk.oldStart;
 			newCursor = hunk.newStart;
+			oldSeen = 0;
+			newSeen = 0;
 			continue;
 		}
 		if (!hunk) continue;
@@ -123,10 +137,12 @@ export function parseUnifiedDiff(raw: string): DiffFile[] {
 			hunk.lines.push({ type: "add", content, newLine: newCursor });
 			current.additions++;
 			newCursor++;
+			newSeen++;
 		} else if (marker === "-") {
 			hunk.lines.push({ type: "del", content, oldLine: oldCursor });
 			current.deletions++;
 			oldCursor++;
+			oldSeen++;
 		} else if (marker === " " || line === "") {
 			hunk.lines.push({
 				type: "ctx",
@@ -136,6 +152,8 @@ export function parseUnifiedDiff(raw: string): DiffFile[] {
 			});
 			oldCursor++;
 			newCursor++;
+			oldSeen++;
+			newSeen++;
 		}
 		// 그 밖의 줄(예: 예상치 못한 메타데이터)은 무시
 	}
