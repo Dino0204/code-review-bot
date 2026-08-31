@@ -1,4 +1,4 @@
-# GSML Code Review Bot
+# Colombina Code Review Bot
 
 GitHub Pull Request를 리뷰하고, 결과를 **인라인 리뷰 코멘트**로 남기는 GitHub App 입니다.
 
