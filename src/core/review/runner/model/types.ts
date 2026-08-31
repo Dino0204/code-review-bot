@@ -14,6 +14,8 @@ export interface RunnerDeps {
 	instructions?: RepoInstructions;
 	/** 고쳐 쓸 요약 코멘트 id. 없으면 새로 단다 */
 	summaryCommentId?: number;
+	/** 이미 인라인으로 단 지적의 키 — 재시도가 같은 코멘트를 두 번 달지 않게 한다 */
+	postedKeys?: Set<string>;
 	/**
 	 * 이미 리뷰한 파일의 해시. 주면 달라진 파일만 본다.
 	 *
@@ -40,4 +42,8 @@ export interface ReviewOutcome {
 	markers: Map<string, string>;
 	/** 이번에 쓰거나 새로 단 요약 코멘트 id — 다음 리뷰가 이 자리를 고쳐 쓴다 */
 	summaryCommentId?: number;
+	/** 리뷰를 못 마친 파일 — 마커에 안 남았으므로 다음 시도에서 다시 묶인다 */
+	failedFiles: string[];
+	/** 이번에 인라인으로 단 지적의 키 — 부른 쪽이 저장한다 */
+	postedKeys: string[];
 }

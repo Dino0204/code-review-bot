@@ -3,6 +3,7 @@ import type { PrRef, ReviewState } from "@/core/ports/review-state";
 import {
 	allKeys,
 	markerKey,
+	postedKey,
 	STATE_TTL_SECONDS,
 	summaryKey,
 } from "./consts/keys";
@@ -27,6 +28,20 @@ export function createRedisReviewState(redis: Redis): ReviewState {
 			await redis
 				.multi()
 				.hset(key, Object.fromEntries(hashes))
+				.expire(key, STATE_TTL_SECONDS)
+				.exec();
+		},
+
+		async postedKeys(ref: PrRef): Promise<Set<string>> {
+			return new Set(await redis.smembers(postedKey(ref)));
+		},
+
+		async addPostedKeys(ref: PrRef, keys: string[]): Promise<void> {
+			if (keys.length === 0) return;
+			const key = postedKey(ref);
+			await redis
+				.multi()
+				.sadd(key, ...keys)
 				.expire(key, STATE_TTL_SECONDS)
 				.exec();
 		},

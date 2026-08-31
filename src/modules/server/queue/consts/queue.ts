@@ -15,3 +15,13 @@ export const REVIEW_CONCURRENCY = 1;
  */
 export const KEEP_COMPLETED = { age: 3600, count: 200 };
 export const KEEP_FAILED = { age: 86400 * 3, count: 500 };
+
+/**
+ * 재시도 정책.
+ *
+ * 실패는 대개 모델 서버가 잠깐 막힌 것이라 바로 다시 걸어봐야 또 막힌다.
+ * 지수 백오프로 1분 → 2분 → 4분 간격을 둔다. 다시 도는 비용은 마커와 게시 기록이
+ * 낮춰준다 — 이미 본 파일과 이미 단 코멘트는 건너뛴다.
+ */
+export const JOB_ATTEMPTS = 4;
+export const JOB_BACKOFF_MS = 60_000;

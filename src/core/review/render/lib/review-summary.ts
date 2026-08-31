@@ -57,9 +57,25 @@ export function renderReviewSummary(
 		);
 	}
 
+	// 못 본 파일이 있으면 접어두지 않고 본문에 적는다 — 리뷰가 온전하지 않다는 사실은
+	// 사람이 반드시 알아야 한다
+	if (meta.failedFiles?.length) {
+		const shown = meta.failedFiles.slice(0, 10);
+		const rest = meta.failedFiles.length - shown.length;
+		parts.push(
+			"",
+			`> ⚠️ 다음 ${meta.failedFiles.length}개 파일은 이번에 리뷰하지 못했다. 재시도가 남아 있으면 자동으로 다시 보고, 아니면 \`/review\` 로 다시 부르면 된다.`,
+			">",
+			`> ${shown.map((path) => `\`${path}\``).join(", ")}${rest ? ` 외 ${rest}개` : ""}`,
+		);
+	}
+
 	const stats = [
 		`파일 ${meta.reviewedFiles}개 리뷰${meta.skippedFiles ? ` (${meta.skippedFiles}개 제외)` : ""}`,
 		meta.unchangedFiles ? `${meta.unchangedFiles}개는 변경 없어 건너뜀` : "",
+		meta.repeatedFindings
+			? `이미 달린 지적 ${meta.repeatedFindings}건은 생략`
+			: "",
 		meta.chunks > 1 ? `${meta.chunks}개 청크로 분할` : "",
 		meta.promptTokens !== undefined
 			? `토큰 ${meta.promptTokens.toLocaleString()} in / ${(meta.completionTokens ?? 0).toLocaleString()} out`

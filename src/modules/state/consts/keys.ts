@@ -12,11 +12,15 @@ export function markerKey(ref: PrRef): string {
 	return `rb:marker:${ref.owner}/${ref.repo}#${ref.pr}`;
 }
 
+export function postedKey(ref: PrRef): string {
+	return `rb:posted:${ref.owner}/${ref.repo}#${ref.pr}`;
+}
+
 export function summaryKey(ref: PrRef): string {
 	return `rb:summary:${ref.owner}/${ref.repo}#${ref.pr}`;
 }
 
 /** PR 하나에 딸린 모든 상태 키 — 닫힐 때 통째로 지운다 */
 export function allKeys(ref: PrRef): string[] {
-	return [markerKey(ref), summaryKey(ref)];
+	return [markerKey(ref), postedKey(ref), summaryKey(ref)];
 }

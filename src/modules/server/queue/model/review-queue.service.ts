@@ -2,7 +2,13 @@ import { InjectQueue } from "@nestjs/bullmq";
 import { Injectable, type OnApplicationShutdown } from "@nestjs/common";
 import type { Queue } from "bullmq";
 import { log } from "@/core/ports/logger";
-import { KEEP_COMPLETED, KEEP_FAILED, REVIEW_QUEUE } from "../consts/queue";
+import {
+	JOB_ATTEMPTS,
+	JOB_BACKOFF_MS,
+	KEEP_COMPLETED,
+	KEEP_FAILED,
+	REVIEW_QUEUE,
+} from "../consts/queue";
 import type { QueueJob } from "./review-job";
 
 /** 헬스체크가 그대로 내보내는 큐 상태 */
@@ -35,6 +41,8 @@ export class ReviewQueueService implements OnApplicationShutdown {
 		await this.queue.add(key, job, {
 			deduplication: { id: key, replace: true, keepLastIfActive: true },
 			delay: delayMs,
+			attempts: JOB_ATTEMPTS,
+			backoff: { type: "exponential", delay: JOB_BACKOFF_MS },
 			removeOnComplete: KEEP_COMPLETED,
 			removeOnFail: KEEP_FAILED,
 		});

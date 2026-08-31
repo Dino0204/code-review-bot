@@ -40,7 +40,7 @@ export class HandlerService {
 	}
 
 	/** 큐 워커가 부른다 — 실제 리뷰가 여기서 돈다 */
-	async run(job: QueueJob): Promise<void> {
+	async run(job: QueueJob, lastAttempt: boolean): Promise<void> {
 		if (job.kind === "cleanup") {
 			await this.state.clear(job);
 			log.info(`${job.owner}/${job.repo}#${job.pr} 닫힘 — 리뷰 상태를 지웠다`);
@@ -52,6 +52,7 @@ export class HandlerService {
 			job.repo,
 			job.installationId,
 			job.trigger,
+			lastAttempt,
 		);
 	}
 }

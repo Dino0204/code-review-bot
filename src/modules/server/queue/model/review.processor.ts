@@ -19,7 +19,12 @@ export class ReviewProcessor extends WorkerHost {
 	}
 
 	override async process(job: Job<unknown>): Promise<void> {
-		await this.handler.run(parseQueueJob(job.data));
+		// attemptsMade 는 이번 시도를 세기 전 값이다 — +1 해야 지금이 몇 번째인지가 된다
+		const attempts = job.opts.attempts ?? 1;
+		await this.handler.run(
+			parseQueueJob(job.data),
+			job.attemptsMade + 1 >= attempts,
+		);
 	}
 
 	@OnWorkerEvent("completed")
@@ -35,7 +40,13 @@ export class ReviewProcessor extends WorkerHost {
 	@OnWorkerEvent("failed")
 	onFailed(job: Job | undefined, error: Error): void {
 		// 잡 하나가 실패해도 워커는 계속 돈다
-		log.error(`큐: ${job?.name ?? "(알 수 없는 잡)"} 실패 — ${error.message}`);
+		const attempts = job?.opts.attempts ?? 1;
+		const made = job?.attemptsMade ?? 1;
+		const retrying =
+			made < attempts ? ` — ${made}/${attempts}, 다시 시도한다` : "";
+		log.error(
+			`큐: ${job?.name ?? "(알 수 없는 잡)"} 실패${retrying} — ${error.message}`,
+		);
 	}
 
 	@OnWorkerEvent("error")

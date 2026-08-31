@@ -37,6 +37,8 @@ export async function execute(
 	repo: string,
 	installationId: number,
 	trigger: Trigger,
+	/** 큐가 더 재시도하지 않는 마지막 시도인지 — 실패를 코멘트로 알릴지 정한다 */
+	lastAttempt: boolean,
 ): Promise<void> {
 	const slug = `${owner}/${repo}`;
 	const prRef = { owner, repo, pr: trigger.pr };
@@ -118,21 +120,32 @@ export async function execute(
 			markers,
 			// 요약은 사람이 부른 리뷰에서도 같은 자리를 고쳐 쓴다 — PR 마다 요약은 하나다
 			summaryCommentId: await deps.state.summaryCommentId(prRef),
+			postedKeys: await deps.state.postedKeys(prRef),
 		};
 		const outcome = await runReview(runnerDeps, pr);
 		// 게시까지 끝난 뒤에 남긴다 — 게시에 실패한 파일을 "봤다"고 적으면 영영 안 보게 된다
 		await deps.state.saveMarkers(prRef, outcome.markers);
+		await deps.state.addPostedKeys(prRef, outcome.postedKeys);
 		if (outcome.summaryCommentId !== undefined)
 			await deps.state.setSummaryCommentId(prRef, outcome.summaryCommentId);
 		log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건`);
+
+		// 남은 파일은 재시도에 맡긴다. 여기까지 저장이 끝났으므로 다음 시도는 못 본 파일만
+		// 다시 묶고, 이미 단 코멘트도 다시 달지 않는다.
+		if (outcome.failedFiles.length > 0)
+			throw new Error(
+				`${outcome.failedFiles.length}개 파일을 리뷰하지 못했다 (${outcome.failedFiles.slice(0, 3).join(", ")}${outcome.failedFiles.length > 3 ? " 외" : ""})`,
+			);
 	} catch (error) {
-		// 실패 사실을 사람이 부른 자리에서 바로 볼 수 있게 남긴다
+		// 실패 사실을 사람이 부른 자리에서 바로 볼 수 있게 남긴다.
+		// 재시도가 남았으면 알리지 않는다 — 어차피 다시 도는 일을 코멘트로 세 번 알릴 이유가 없다.
 		const message = error instanceof Error ? error.message : String(error);
 		log.error(`${slug}#${pr.number} 실패: ${message}`);
-		await reportFailure(github, trigger, intent, message).catch(
-			(commentError: unknown) =>
-				log.warn(`실패 코멘트 등록 실패: ${String(commentError)}`),
-		);
+		if (lastAttempt)
+			await reportFailure(github, trigger, intent, message).catch(
+				(commentError: unknown) =>
+					log.warn(`실패 코멘트 등록 실패: ${String(commentError)}`),
+			);
 		throw error;
 	}
 }
