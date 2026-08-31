@@ -21,6 +21,10 @@ function stripPrefix(raw: string): string {
 export function parseUnifiedDiff(raw: string): DiffFile[] {
 	const files: DiffFile[] = [];
 	const lines = raw.split("\n");
+	// diff 는 개행으로 끝나므로 split 하면 마지막에 빈 원소가 남는다.
+	// 그것을 컨텍스트 줄로 세면 마지막 헝크의 줄 수가 하나씩 부풀어 complete 판정이 뒤집힌다.
+	// 내용이 빈 컨텍스트 줄은 `" "` 로 오지 `""` 로 오지 않는다.
+	if (lines[lines.length - 1] === "") lines.pop();
 
 	let current: DiffFile | undefined;
 	let hunk: DiffHunk | undefined;

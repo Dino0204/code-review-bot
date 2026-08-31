@@ -239,9 +239,20 @@ classifyError(error: unknown): ErrorClass
 ```
 
 `DiffHunk`에 `complete: boolean` 을 추가한다. 헤더가 선언한 `oldLines`/`newLines` 와 실제
-센 줄 수가 맞는지 검사한 결과다. GitHub이 큰 patch를 잘라 보낼 때 불완전한 hunk가 오는데,
-불완전한 hunk를 근거로 줄 번호를 계산하면 422가 난다. `complete: false` 인 hunk는 코멘트
-대상에서 뺀다.
+센 줄 수가 맞는지 검사한 결과다. 불완전한 hunk를 근거로 줄 번호를 계산하면 422가 나므로
+`complete: false` 인 hunk는 코멘트 대상에서 뺀다.
+
+실제 API 응답을 확인한 결과는 다음과 같다. 공식 문서에는 3000파일 제한만 있고 patch 잘림은
+문서화되어 있지 않다.
+
+- `GET /pulls/{n}/files` 는 큰 파일의 `patch` 를 **자르는 것이 아니라 통째로 생략**한다.
+  `facebook/react#37382` 에서 `yarn.lock`(changes=2180)의 `patch` 필드가 아예 없었다.
+  같은 응답에서 `microsoft/vscode#333394` 는 70,986자 patch를 온전히 줬다 — 크기만의 문제는 아니다.
+- diff media type(`Accept: application/vnd.github.diff`, 우리가 쓰는 쪽)은 같은 PR에서
+  `yarn.lock` 을 포함한 61개 파일을 모두 온전히 줬다. 276KB 였다.
+
+즉 지금 확인된 범위에서 잘린 hunk는 관측되지 않았다. `complete` 는 방어막으로 남기되,
+**이것이 실제로 걸리는 상황을 봤다면 그 조건을 여기 적는다.**
 
 ## 9. 작업 단계
 
