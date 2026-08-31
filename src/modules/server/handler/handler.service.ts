@@ -1,7 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { RawEvent } from "@/core/event/model/types";
 import { createGitHubApp } from "@/modules/github/app/api/create-github-app";
-import { SERVER_ENV, type ServerEnv } from "../config/model/server-env";
+import { type ServerConfig, serverConfig } from "../config/model/server-config";
 import { accept } from "./model/accept";
 import type { AcceptedEvent, HandlerDeps } from "./model/types";
 
@@ -14,13 +14,14 @@ import type { AcceptedEvent, HandlerDeps } from "./model/types";
 export class HandlerService {
 	private readonly deps: HandlerDeps;
 
-	constructor(@Inject(SERVER_ENV) env: ServerEnv) {
+	constructor(@Inject(serverConfig.KEY) config: ServerConfig) {
 		this.deps = {
 			app: createGitHubApp({
-				appId: env.githubAppId,
-				privateKey: env.githubPrivateKey,
+				appId: config.githubAppId,
+				privateKey: config.githubPrivateKey,
 			}),
-			gsmlApiKey: env.gsmlApiKey,
+			gsmlApiKey: config.gsmlApiKey,
+			repoOverrides: config.repoOverrides,
 		};
 	}
 

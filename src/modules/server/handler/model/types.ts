@@ -1,8 +1,11 @@
+import type { BotConfig } from "@/core/config/model/bot-config";
 import type { GitHubApp } from "@/modules/github/app/model/types";
 
 export interface HandlerDeps {
 	app: GitHubApp;
 	gsmlApiKey: string;
+	/** 리포지토리 설정 위에 얹을 값 — 환경변수에서 온다 */
+	repoOverrides: Partial<BotConfig>;
 }
 
 export interface AcceptedEvent {

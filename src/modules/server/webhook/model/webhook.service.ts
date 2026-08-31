@@ -1,7 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { RawEvent } from "@/core/event/model/types";
 import { log } from "@/core/ports/logger";
-import { SERVER_ENV, type ServerEnv } from "../../config/model/server-env";
+import {
+	type ServerConfig,
+	serverConfig,
+} from "../../config/model/server-config";
 import { HandlerService } from "../../handler/handler.service";
 import { ReviewQueueService } from "../../queue/model/review-queue.service";
 import { verifySignature } from "../lib/verify-signature";
@@ -15,7 +18,7 @@ export interface WebhookOutcome {
 @Injectable()
 export class WebhookService {
 	constructor(
-		@Inject(SERVER_ENV) private readonly env: ServerEnv,
+		@Inject(serverConfig.KEY) private readonly config: ServerConfig,
 		private readonly handler: HandlerService,
 		private readonly queue: ReviewQueueService,
 	) {}
@@ -33,7 +36,7 @@ export class WebhookService {
 	): WebhookOutcome {
 		if (!rawBody) return { status: 400, body: "empty body" };
 
-		if (!verifySignature(this.env.webhookSecret, rawBody, signature)) {
+		if (!verifySignature(this.config.webhookSecret, rawBody, signature)) {
 			log.warn("서명이 맞지 않는 웹훅 요청을 거절했다");
 			return { status: 401, body: "bad signature" };
 		}

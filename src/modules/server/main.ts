@@ -13,7 +13,7 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import { log, setLogger } from "@/core/ports/logger";
 import { consoleLogger } from "@/modules/logger";
 import { AppModule } from "./app.module";
-import { SERVER_ENV, type ServerEnv } from "./config/model/server-env";
+import { type ServerConfig, serverConfig } from "./config/model/server-config";
 import { nestLogger } from "./nest-logger";
 import { WEBHOOK_BODY_LIMIT } from "./webhook/consts/limits";
 
@@ -34,9 +34,9 @@ async function bootstrap(): Promise<void> {
 	// SIGTERM/SIGINT 에 HTTP 서버를 먼저 닫고 onApplicationShutdown 을 부른다
 	app.enableShutdownHooks();
 
-	const env = app.get<ServerEnv>(SERVER_ENV);
-	await app.listen(env.port);
-	log.info(`웹훅 서버 시작 — 포트 ${env.port}`);
+	const config = app.get<ServerConfig>(serverConfig.KEY);
+	await app.listen(config.port);
+	log.info(`웹훅 서버 시작 — 포트 ${config.port}`);
 }
 
 bootstrap().catch((error: unknown) => {

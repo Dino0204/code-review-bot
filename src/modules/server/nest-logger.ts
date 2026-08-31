@@ -1,10 +1,17 @@
 import type { LoggerService } from "@nestjs/common";
 import { log } from "@/core/ports/logger";
 
+/** Nest 는 부팅 실패를 Error 객체째로 넘긴다 — 직렬화하면 `{}` 가 되어 원인이 사라진다 */
+function describe(message: unknown): string {
+	if (typeof message === "string") return message;
+	if (message instanceof Error) return message.stack ?? message.message;
+	return JSON.stringify(message) ?? String(message);
+}
+
 function line(message: unknown, params: unknown[]): string {
 	// Nest 는 마지막 인자로 컨텍스트(클래스 이름)를 넘긴다 — 앞에 붙여 출처를 남긴다
 	const context = params.length > 0 ? params[params.length - 1] : undefined;
-	const text = typeof message === "string" ? message : JSON.stringify(message);
+	const text = describe(message);
 	return typeof context === "string" ? `[${context}] ${text}` : text;
 }
 
