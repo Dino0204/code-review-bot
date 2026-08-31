@@ -58,15 +58,11 @@ export async function requestReply(
 		maxTokens: config.maxOutputTokens,
 	};
 
+	const conversation: ChatMessage[] = [...messages];
 	let lastText = "";
 	for (let attempt = 1; attempt <= 2; attempt++) {
-		const attemptMessages: ChatMessage[] =
-			attempt === 1
-				? messages
-				: [...messages, { role: "user", content: retryNudge() }];
-
 		const { toolCalls, text } = await llm.chatWithTools(
-			attemptMessages,
+			conversation,
 			tools,
 			options,
 		);
@@ -79,6 +75,9 @@ export async function requestReply(
 
 		lastText = text;
 		log.warn(`모델이 도구를 호출하지 않았다 (${attempt}/2)`);
+		// 교정 지시만 덧붙이면 모델은 자기가 무엇을 냈는지 못 본다 — 직전 응답을 함께 싣는다
+		conversation.push({ role: "assistant", content: text });
+		conversation.push({ role: "user", content: retryNudge() });
 	}
 
 	if (!lastText.trim())
