@@ -24,7 +24,7 @@ const common = {
 
 // server: 웹훅 서버 진입점 (도커 이미지 안에서 실행된다)
 const targets = [
-	{ entryPoints: ["src/server/index.ts"], outfile: "dist/server.mjs" },
+	{ entryPoints: ["src/modules/server/index.ts"], outfile: "dist/server.mjs" },
 ];
 
 for (const target of targets) {
