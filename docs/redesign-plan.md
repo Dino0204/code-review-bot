@@ -77,7 +77,7 @@ src/
     llm/client.ts          LlmClient 구현
     logger.ts              Logger 구현 (콘솔)
     net.ts                 fetch 오류 해석
-    server/                HTTP, 웹훅, 큐, 핸들러 배선
+    server/                Nest 앱 — HTTP, 웹훅, 큐, 핸들러 배선
 ```
 
 경계는 두 명령으로 검증한다. 둘 다 결과가 없어야 한다.
@@ -89,6 +89,16 @@ grep -rn 'octokit\|fetch(\|node:fs\|process\.env' src/core/   # core 안의 직�
 
 import 규약은 기존과 같다 — 슬라이스를 넘을 때는 `@/` 별칭(`tsconfig.json` 의 `paths`,
 `@/*` → `src/*`)을 쓰고, 같은 슬라이스 안에서는 상대 경로를 유지한다.
+
+**Nest 배선.** `server/` 아래 모듈은 `config`(전역, 환경변수) · `queue`(리뷰 큐) ·
+`handler`(App 인증과 이벤트 판정) · `webhook`(POST /webhook) · `health`(GET /, /health) 다.
+본문은 Express 파서 대신 `raw` 로 받는다 — 서명은 원본 바이트에 대해 계산되고, 파서가 먼저
+400 을 내면 서명 없는 요청과 깨진 JSON 이 구분되지 않는다. 프레임워크 로그는
+`nest-logger.ts` 가 Logger 포트로 넘겨 출력 형식을 하나로 유지한다.
+
+biome 의 `style/useImportType` 은 껐다. 주입받는 클래스의 import 를 `import type` 으로
+바꿔버리는데, 그러면 `emitDecoratorMetadata` 가 타입 대신 `Object` 를 실어 Nest 가 의존을
+못 찾는다 — 타입체크는 통과하고 런타임에만 터지는 종류의 고장이다.
 
 **Logger 포트.** 도메인도 무슨 일이 있었는지는 남겨야 한다 — 지적을 몇 건 왜 버렸는지는
 밖에서 다시 계산할 수 없다. 그래서 로그 호출을 걷어내는 대신 인터페이스만 core 에 두고
@@ -264,7 +274,7 @@ classifyError(error: unknown): ErrorClass
 | 1 | `src/core/` · `src/modules/` 분리, Logger 포트 도입 | 예 | 완료 — typecheck, build, biome |
 | 2 | hunk 해시 + `complete` 플래그 추가 | 예 | 완료 — 스모크 확인. **큰 PR 로 실제 확인 필요** |
 | 3 | tsc 빌드 전환(CJS), Dockerfile 멀티스테이지 조정 | 예 | 완료 — 빌드·실행 확인. **도커 이미지 빌드는 미검증**(로컬 데몬 꺼짐, CI 가 확인) |
-| 4 | Nest 스캐폴드 + `modules/` 어댑터, 기존 http-server 대체 | 예 | 웹훅 수신 확인 |
+| 4 | Nest 스캐폴드 + `modules/` 어댑터, 기존 http-server 대체 | 예 | 완료 — 로컬 기동 후 서명 웹훅으로 ping·큐 적재·거절·종료 확인 |
 | 5 | Redis + BullMQ 도입, 인메모리 큐 제거, compose에 redis 추가 | 예 | 재기동 후 잡 재개 확인 |
 | 6 | 마커 저장소 + 증분 재리뷰 + push debounce | 예 | **실제 PR 필요** — 증분 판정 |
 | 7 | 요약 코멘트 edit 방식으로 전환 | 예 | 실제 PR 필요 |

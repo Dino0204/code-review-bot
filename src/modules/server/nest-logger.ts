@@ -1,0 +1,28 @@
+import type { LoggerService } from "@nestjs/common";
+import { log } from "@/core/ports/logger";
+
+function line(message: unknown, params: unknown[]): string {
+	// Nest 는 마지막 인자로 컨텍스트(클래스 이름)를 넘긴다 — 앞에 붙여 출처를 남긴다
+	const context = params.length > 0 ? params[params.length - 1] : undefined;
+	const text = typeof message === "string" ? message : JSON.stringify(message);
+	return typeof context === "string" ? `[${context}] ${text}` : text;
+}
+
+/**
+ * Nest 프레임워크 로그를 Logger 포트로 흘린다.
+ *
+ * Nest 기본 로거를 그대로 두면 프레임워크 로그만 형식이 달라진다. 10단계에서 구조화 로그로
+ * 바꿀 때도 이 브릿지 덕분에 `modules/logger.ts` 하나만 갈아끼우면 된다.
+ */
+export const nestLogger: LoggerService = {
+	log: (message: unknown, ...params: unknown[]) =>
+		log.info(line(message, params)),
+	error: (message: unknown, ...params: unknown[]) =>
+		log.error(line(message, params)),
+	warn: (message: unknown, ...params: unknown[]) =>
+		log.warn(line(message, params)),
+	debug: (message: unknown, ...params: unknown[]) =>
+		log.debug(line(message, params)),
+	verbose: (message: unknown, ...params: unknown[]) =>
+		log.debug(line(message, params)),
+};

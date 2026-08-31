@@ -10,5 +10,17 @@
 			"!.reviewbot",
 			"!dist"
 		]
+	},
+	"javascript": {
+		"parser": {
+			"unsafeParameterDecoratorsEnabled": true
+		}
+	},
+	"linter": {
+		"rules": {
+			"style": {
+				"useImportType": "off"
+			}
+		}
 	}
 }
