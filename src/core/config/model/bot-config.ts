@@ -1,14 +1,18 @@
 import type { Severity } from "./severity";
 
 export interface BotConfig {
-	/** OpenAI 호환 API base URL (버전 경로까지 포함) */
-	baseUrl: string;
 	/** 리뷰 코멘트 언어 */
 	language: string;
 	temperature: number;
 	maxOutputTokens: number;
 
-	/** 프롬프트 1회 호출에 실어보낼 최대 문자 수 (대략 4자 ≈ 1토큰) */
+	/**
+	 * 프롬프트 1회 호출에 실어보낼 최대 문자 수 (대략 4자 ≈ 1토큰).
+	 *
+	 * 리포지토리가 더 줄이고 싶을 때 쓰는 상한이다 — 실제 배치 크기는 이 값과
+	 * 1순위 provider 의 예산 중 작은 쪽이다. provider 는 `providers.yml` 이 정하고
+	 * 리포지토리 설정으로는 못 고른다.
+	 */
 	maxPromptChars: number;
 	/** 리뷰 대상 최대 파일 수 */
 	maxFiles: number;

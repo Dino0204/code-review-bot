@@ -20,6 +20,10 @@ export function summaryKey(ref: PrRef): string {
 	return `rb:summary:${ref.owner}/${ref.repo}#${ref.pr}`;
 }
 
+export function cooldownKey(provider: string): string {
+	return `rb:cooldown:${provider}`;
+}
+
 /** PR 하나에 딸린 모든 상태 키 — 닫힐 때 통째로 지운다 */
 export function allKeys(ref: PrRef): string[] {
 	return [markerKey(ref), postedKey(ref), summaryKey(ref)];

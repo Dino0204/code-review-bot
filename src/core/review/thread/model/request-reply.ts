@@ -1,20 +1,16 @@
-import type { PullRequestInfo, ReviewThread } from "@/core/github/port";
-import type { ToolCall } from "@/core/llm/model/types";
+import type { ChatMessage, ToolCall } from "@/core/llm/model/types";
 import { log } from "@/core/ports/logger";
 import { REPLY_TOOL } from "@/core/review/prompt/consts/tools";
 import { replyTools } from "@/core/review/prompt/lib/reply-tools";
-import { buildReplyMessages } from "@/core/review/prompt/model/reply-messages";
-import type { FileExcerpt } from "@/core/review/prompt/model/types";
 import type { RawReply } from "@/core/review/schema/model/reply";
 import { replySchema } from "@/core/review/schema/model/reply";
-import type { ThreadDeps } from "./types";
+import type { ReplyDeps } from "./types";
 
-/** 도구를 부르지 않은 응답에 붙이는 교정 지시. 형식은 도구 블록에 이미 있으므로 되풀이하지 않는다. */
+/** 도구를 부르지 않은 응답에 붙이는 교정 지시 */
 function retryNudge(): string {
 	return [
 		"방금 응답에는 도구 호출이 없었다. 본문만 쓴 응답은 전달되지 않고 버려진다.",
 		`같은 답변을 ${REPLY_TOOL} 호출 한 번으로 다시 제출하라.`,
-		"<tool_call> 블록 밖에는 아무것도 쓰지 마라.",
 	].join("\n");
 }
 
@@ -46,24 +42,16 @@ function collectReply(toolCalls: ToolCall[]): RawReply | undefined {
 /**
  * 모델에게 도구를 제시해 답변을 받는다.
  *
- * 도구 주입은 프롬프트 기반이라 모델이 아예 안 부를 수 있다(llm.ts 참고).
- * 그 경우 한 번 더 시도하고, 그래도 못 받으면 모델이 쓴 본문을 그대로 답글로 실어
- * 사람이 부른 말에 아무 반응도 남지 않는 상황을 피한다.
+ * 리뷰와 달리 지적을 스키마로 걸러 실패시키지 않는다 — 답글은 사람이 읽고 마는 글이라
+ * 틀린 줄 번호로 GitHub 422 를 부를 자리가 없다. 도구를 아예 안 부르면 한 번 더 시도하고,
+ * 그래도 못 받으면 모델이 쓴 본문을 그대로 답글로 실어 사람이 부른 말에 아무 반응도
+ * 남지 않는 상황을 피한다.
  */
 export async function requestReply(
-	deps: ThreadDeps,
-	pr: PullRequestInfo,
-	thread: ReviewThread,
-	excerpt: FileExcerpt | undefined,
+	deps: ReplyDeps,
+	messages: ChatMessage[],
 ): Promise<{ reply: RawReply; degraded: boolean }> {
-	const { llm, config, instructions } = deps;
-	const messages = buildReplyMessages({
-		config,
-		pr,
-		thread,
-		excerpt,
-		instructions,
-	});
+	const { llm, config } = deps;
 	const tools = replyTools(config);
 	const options = {
 		temperature: config.temperature,
@@ -72,10 +60,10 @@ export async function requestReply(
 
 	let lastText = "";
 	for (let attempt = 1; attempt <= 2; attempt++) {
-		const attemptMessages =
+		const attemptMessages: ChatMessage[] =
 			attempt === 1
 				? messages
-				: [...messages, { role: "user" as const, content: retryNudge() }];
+				: [...messages, { role: "user", content: retryNudge() }];
 
 		const { toolCalls, text } = await llm.chatWithTools(
 			attemptMessages,

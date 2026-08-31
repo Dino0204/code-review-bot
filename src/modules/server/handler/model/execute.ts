@@ -4,10 +4,9 @@ import type { GitHubClient } from "@/core/github/port";
 import { log } from "@/core/ports/logger";
 import { renderError } from "@/core/review/render/lib/error";
 import { runReview } from "@/core/review/runner/model/run-review";
-import type { RunnerDeps } from "@/core/review/runner/model/types";
+import type { ReviewDeps } from "@/core/review/runner/model/types";
 import { answerThread } from "@/core/review/thread/model/answer-thread";
 import { createGitHubClient } from "@/modules/github/client/create-github-client";
-import { createLlmClient } from "@/modules/llm/client";
 import { loadRepoConfig } from "../api/load-repo-config";
 import { loadRepoInstructions } from "../api/load-repo-instructions";
 import { resolveIntent } from "../lib/resolve-intent";
@@ -85,10 +84,9 @@ export async function execute(
 	// 할 일을 정한 뒤에 읽는다 — 무시할 이벤트에 API 쿼터를 쓰지 않는다
 	const instructions = await loadRepoInstructions(github, pr.headSha);
 
-	const llm = createLlmClient({
-		apiKey: deps.gsmlApiKey,
-		baseUrl: config.baseUrl,
-	});
+	// 체인은 잡마다 새로 만든다 — 이번 잡에서 뺀 provider 와 누적 토큰이 다음 잡에
+	// 새어 들면 안 된다. cooldown 은 Redis 에 있어 체인이 바뀌어도 남는다.
+	const chain = deps.newChain();
 
 	try {
 		if (intent.kind === "reply") {
@@ -96,7 +94,7 @@ export async function execute(
 				`${slug}#${pr.number} 쓰레드 응답 시작 (코멘트 ${intent.commentId})`,
 			);
 			const outcome = await answerThread(
-				{ github, llm, config, instructions },
+				{ github, chain, config, instructions },
 				pr,
 				intent.commentId,
 			);
@@ -112,9 +110,9 @@ export async function execute(
 			trigger.kind === "pull_request"
 				? await deps.state.markers(prRef)
 				: undefined;
-		const runnerDeps: RunnerDeps = {
+		const reviewDeps: ReviewDeps = {
 			github,
-			llm,
+			chain,
 			config,
 			instructions,
 			markers,
@@ -122,7 +120,7 @@ export async function execute(
 			summaryCommentId: await deps.state.summaryCommentId(prRef),
 			postedKeys: await deps.state.postedKeys(prRef),
 		};
-		const outcome = await runReview(runnerDeps, pr);
+		const outcome = await runReview(reviewDeps, pr);
 		// 게시까지 끝난 뒤에 남긴다 — 게시에 실패한 파일을 "봤다"고 적으면 영영 안 보게 된다
 		await deps.state.saveMarkers(prRef, outcome.markers);
 		await deps.state.addPostedKeys(prRef, outcome.postedKeys);

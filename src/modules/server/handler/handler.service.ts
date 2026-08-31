@@ -4,6 +4,7 @@ import { log } from "@/core/ports/logger";
 import type { ReviewState } from "@/core/ports/review-state";
 import { createGitHubApp } from "@/modules/github/app/api/create-github-app";
 import { type ServerConfig, serverConfig } from "../config/model/server-config";
+import { ChainFactory } from "../llm/model/chain.factory";
 import type { QueueJob } from "../queue/model/review-job";
 import { REVIEW_STATE } from "../state/consts/tokens";
 import { accept } from "./model/accept";
@@ -22,13 +23,14 @@ export class HandlerService {
 	constructor(
 		@Inject(serverConfig.KEY) config: ServerConfig,
 		@Inject(REVIEW_STATE) private readonly state: ReviewState,
+		chains: ChainFactory,
 	) {
 		this.deps = {
 			app: createGitHubApp({
 				appId: config.githubAppId,
 				privateKey: config.githubPrivateKey,
 			}),
-			gsmlApiKey: config.gsmlApiKey,
+			newChain: () => chains.create(),
 			repoOverrides: config.repoOverrides,
 			state,
 		};
