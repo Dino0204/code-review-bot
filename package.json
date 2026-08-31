@@ -1,7 +1,7 @@
 {
-	"name": "gsml-code-review-bot",
+	"name": "colombina-code-review-bot",
 	"version": "0.1.0",
-	"description": "GSML 게이트웨이 기반 GitHub 코드 리뷰 봇 — gemini-code-assist 대체용",
+	"description": "GitHub Pull Request 코드 리뷰 봇 — gemini-code-assist 대체용",
 	"private": true,
 	"type": "module",
 	"engines": {
