@@ -6,8 +6,7 @@ import type { RawEvent, Trigger } from "@/core/event/model/types";
 import { log } from "@/core/ports/logger";
 import { hasMention } from "@/core/review/commands/lib/has-mention";
 import { AUTO_REVIEW_PR_ACTIONS } from "../consts/auto-review-actions";
-import { execute } from "./execute";
-import type { AcceptedEvent, HandlerDeps } from "./types";
+import type { AcceptedEvent } from "./types";
 
 /**
  * 큐에서 중복을 걸러내는 키.
@@ -30,7 +29,6 @@ function queueKey(slug: string, trigger: Trigger): string {
  * 실제 명령 해석은 리포지토리 설정을 읽은 뒤에 한다.
  */
 export function accept(
-	deps: HandlerDeps,
 	eventName: string,
 	payload: RawEvent,
 ): AcceptedEvent | undefined {
@@ -72,6 +70,6 @@ export function accept(
 
 	return {
 		key: queueKey(slug, trigger),
-		run: () => execute(deps, repo.owner, repo.repo, installationId, trigger),
+		job: { owner: repo.owner, repo: repo.repo, installationId, trigger },
 	};
 }

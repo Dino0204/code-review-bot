@@ -1,10 +1,13 @@
 import { Controller, Get } from "@nestjs/common";
+import { log } from "@/core/ports/logger";
 import { ReviewQueueService } from "../../queue/model/review-queue.service";
 
 interface HealthStatus {
+	/** 큐 상태를 읽어올 수 있는지 — Redis 가 끊기면 false 다 */
 	ok: boolean;
 	queued: number;
-	active: string | null;
+	active: number;
+	failed: number;
 }
 
 /**
@@ -17,20 +20,33 @@ export class HealthController {
 	constructor(private readonly queue: ReviewQueueService) {}
 
 	@Get()
-	root(): HealthStatus {
+	root(): Promise<HealthStatus> {
 		return this.status();
 	}
 
 	@Get("health")
-	health(): HealthStatus {
+	health(): Promise<HealthStatus> {
 		return this.status();
 	}
 
-	private status(): HealthStatus {
-		return {
-			ok: true,
-			queued: this.queue.size,
-			active: this.queue.active ?? null,
-		};
+	/**
+	 * Redis 가 끊겨도 500 을 내지 않는다 — 스택 대신 `ok: false` 로 보이는 편이
+	 * 도커 헬스체크와 사람 모두에게 읽기 쉽다.
+	 */
+	private async status(): Promise<HealthStatus> {
+		try {
+			const counts = await this.queue.status();
+			return {
+				ok: true,
+				queued: counts.waiting,
+				active: counts.active,
+				failed: counts.failed,
+			};
+		} catch (error) {
+			log.warn(
+				`큐 상태를 읽지 못했다 — ${error instanceof Error ? error.message : String(error)}`,
+			);
+			return { ok: false, queued: 0, active: 0, failed: 0 };
+		}
 	}
 }
