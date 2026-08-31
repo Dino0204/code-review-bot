@@ -23,7 +23,7 @@ diff 파싱의 `Complete` 플래그와 hunk 해시 개념만 가져온다.
 | 이행 전략 | 껍데기 교체, 코어 보존 | `diff` 줄 번호 계산과 `prepareFindings`는 GitHub 422를 부르는 위험 구역인데 테스트가 없다. 재작성이 가장 위험한 코드다 |
 | 디렉터리 | `src/core/`(도메인 + 포트) + `src/modules/`(어댑터 + 프로세스 경계) | 핵심 로직을 core 에 두되 구체 구현이 아니라 포트에 의존시킨다. 위험 구역이 격리되어 나중에 테스트를 붙일 때 구조를 다시 안 건드린다 |
 | 프레임워크 | NestJS | 사용자가 아는 백엔드 프레임워크 |
-| 빌드 | tsc + `node_modules` 포함 | esbuild는 `emitDecoratorMetadata`를 지원하지 않아 Nest 기본 DI가 안 돈다 |
+| 빌드 | tsc + `tsc-alias`, CJS, `node_modules` 포함 | esbuild는 `emitDecoratorMetadata` 를 지원하지 않아 Nest 기본 DI 가 안 돈다. Nest 공식 구성이 CJS 라 문서·예제와 맞춘다 — 코드에 ESM 전용 문법이 없어 전환 비용이 없었다 |
 | 큐 | Redis + `@nestjs/bullmq` | 재시도·지연·동시성 제한·중복 제거를 직접 안 짜도 된다. 마커도 같은 Redis에 둔다 |
 | 멀티턴 | `read_file` 도구 루프 유지 | diff만 보고 내리는 오탐을 줄이는 장치 |
 | 출력 규약 | 네이티브 tool calling | 서버측 그래머 강제라 파싱 실패가 구조적으로 줄어든다 |
@@ -263,7 +263,7 @@ classifyError(error: unknown): ErrorClass
 | 0 | 이 문서 추가, CLAUDE.md 삭제, 봇 이름을 colombina로 변경 | — | 완료 |
 | 1 | `src/core/` · `src/modules/` 분리, Logger 포트 도입 | 예 | 완료 — typecheck, build, biome |
 | 2 | hunk 해시 + `complete` 플래그 추가 | 예 | 완료 — 스모크 확인. **큰 PR 로 실제 확인 필요** |
-| 3 | tsc 빌드로 전환, Dockerfile 멀티스테이지 조정 | 예 | 컨테이너 기동 확인 |
+| 3 | tsc 빌드 전환(CJS), Dockerfile 멀티스테이지 조정 | 예 | 완료 — 빌드·실행 확인. **도커 이미지 빌드는 미검증**(로컬 데몬 꺼짐, CI 가 확인) |
 | 4 | Nest 스캐폴드 + `modules/` 어댑터, 기존 http-server 대체 | 예 | 웹훅 수신 확인 |
 | 5 | Redis + BullMQ 도입, 인메모리 큐 제거, compose에 redis 추가 | 예 | 재기동 후 잡 재개 확인 |
 | 6 | 마커 저장소 + 증분 재리뷰 + push debounce | 예 | **실제 PR 필요** — 증분 판정 |
