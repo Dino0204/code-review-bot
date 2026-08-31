@@ -11,6 +11,8 @@ export interface ServerConfig {
 	githubAppId: string;
 	githubPrivateKey: string;
 	gsmlApiKey: string;
+	/** 큐와 리뷰 상태를 담아두는 Redis 주소 */
+	redisUrl: string;
 	/** 리포지토리 설정 파일 위에 얹을 값 — 서버 운영자가 환경변수로 지정한다 */
 	repoOverrides: Partial<BotConfig>;
 }
@@ -37,6 +39,8 @@ const schema = z
 		GITHUB_APP_PRIVATE_KEY: text.optional(),
 		GITHUB_APP_PRIVATE_KEY_PATH: text.optional(),
 		GSML_API_KEY: text,
+		// compose 안에서는 서비스 이름으로 붙는다. 로컬에서 그냥 띄우면 기본값이 맞는다.
+		REDIS_URL: text.default("redis://127.0.0.1:6379"),
 
 		REVIEWBOT_BASE_URL: text.optional(),
 		REVIEWBOT_LANGUAGE: text.optional(),
@@ -109,6 +113,7 @@ export const serverConfig = registerAs("server", (): ServerConfig => {
 		githubAppId: env.GITHUB_APP_ID,
 		githubPrivateKey: privateKey,
 		gsmlApiKey: env.GSML_API_KEY,
+		redisUrl: env.REDIS_URL,
 		repoOverrides: repoOverrides(env),
 	};
 });

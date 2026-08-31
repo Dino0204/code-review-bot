@@ -18,13 +18,13 @@ export class WebhookController {
 	 * `passthrough` 라 본문은 반환값으로 그대로 나간다.
 	 */
 	@Post()
-	receive(
+	async receive(
 		@Req() request: RawBodyRequest<Request>,
 		@Res({ passthrough: true }) response: Response,
 		@Headers("x-github-event") eventName?: string,
 		@Headers("x-hub-signature-256") signature?: string,
-	): string {
-		const outcome = this.webhook.handle(
+	): Promise<string> {
+		const outcome = await this.webhook.handle(
 			eventName ?? "",
 			signature,
 			request.rawBody,
