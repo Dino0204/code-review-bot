@@ -1,5 +1,5 @@
-import { SEVERITY_LABEL } from "../../schema/consts/severity-label";
-import type { Finding } from "../../schema/model/finding";
+import { SEVERITY_LABEL } from "@/review/schema/consts/severity-label";
+import type { Finding } from "@/review/schema/model/finding";
 import { BOT_MARKER } from "../consts/marker";
 import { suggestionBlock } from "./suggestion-block";
 

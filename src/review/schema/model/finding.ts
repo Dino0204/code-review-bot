@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { Severity } from "../../../config/model/severity";
-import { SEVERITIES } from "../../../config/model/severity";
+import type { Severity } from "@/config/model/severity";
+import { SEVERITIES } from "@/config/model/severity";
 
 /**
  * 모델 출력은 신뢰할 수 없으므로 최대한 관대하게 받아들이고(coerce/catch),

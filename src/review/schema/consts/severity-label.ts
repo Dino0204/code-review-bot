@@ -1,4 +1,4 @@
-import type { Severity } from "../../../config/model/severity";
+import type { Severity } from "@/config/model/severity";
 
 export const SEVERITY_LABEL: Record<Severity, string> = {
 	critical: "🔴 critical",

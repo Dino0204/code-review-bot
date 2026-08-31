@@ -1,4 +1,4 @@
-import type { DiffFile } from "../../../github/diff/model/types";
+import type { DiffFile } from "@/github/diff/model/types";
 import { SOURCE_RADIUS } from "../consts/radius";
 import type { FileSource, SourceRegion } from "../model/types";
 

@@ -1,9 +1,9 @@
-import type { ToolCall } from "../../../llm/model/types";
-import { log } from "../../../logger";
-import { FINDING_TOOL, SUMMARY_TOOL } from "../../prompt/consts/tools";
-import type { RawFinding } from "../../schema/model/finding";
-import { findingSchema } from "../../schema/model/finding";
-import type { ReviewResult } from "../../schema/model/review-result";
+import type { ToolCall } from "@/llm/model/types";
+import { log } from "@/logger";
+import { FINDING_TOOL, SUMMARY_TOOL } from "@/review/prompt/consts/tools";
+import type { RawFinding } from "@/review/schema/model/finding";
+import { findingSchema } from "@/review/schema/model/finding";
+import type { ReviewResult } from "@/review/schema/model/review-result";
 
 /**
  * 도구 호출을 리뷰 결과로 모은다.

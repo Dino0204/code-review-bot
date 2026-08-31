@@ -1,8 +1,8 @@
-import { BOT_MENTION } from "../../../config/consts/bot";
-import type { BotConfig } from "../../../config/model/bot-config";
-import type { Trigger } from "../../../github/event/model/types";
-import { hasMention } from "../../../review/commands/lib/has-mention";
-import { hasReviewTrigger } from "../../../review/commands/lib/has-review-trigger";
+import { BOT_MENTION } from "@/config/consts/bot";
+import type { BotConfig } from "@/config/model/bot-config";
+import type { Trigger } from "@/github/event/model/types";
+import { hasMention } from "@/review/commands/lib/has-mention";
+import { hasReviewTrigger } from "@/review/commands/lib/has-review-trigger";
 import type { Intent } from "../model/types";
 
 /**

@@ -1,7 +1,7 @@
-import type { BotConfig } from "../../../config/model/bot-config";
-import { SEVERITY_LABEL } from "../../schema/consts/severity-label";
-import type { Finding } from "../../schema/model/finding";
-import type { ReviewResult } from "../../schema/model/review-result";
+import type { BotConfig } from "@/config/model/bot-config";
+import { SEVERITY_LABEL } from "@/review/schema/consts/severity-label";
+import type { Finding } from "@/review/schema/model/finding";
+import type { ReviewResult } from "@/review/schema/model/review-result";
 import { BOT_MARKER } from "../consts/marker";
 import type { ReviewMeta } from "../model/types";
 

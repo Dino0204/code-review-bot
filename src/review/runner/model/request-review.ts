@@ -1,15 +1,15 @@
-import type { BotConfig } from "../../../config/model/bot-config";
-import type { ChatMessage } from "../../../llm/model/types";
-import { log } from "../../../logger";
+import type { BotConfig } from "@/config/model/bot-config";
+import type { ChatMessage } from "@/llm/model/types";
+import { log } from "@/logger";
 import {
 	FINDING_TOOL,
 	READ_TOOL,
 	SUMMARY_TOOL,
-} from "../../prompt/consts/tools";
-import { reviewTools } from "../../prompt/lib/review-tools";
-import { buildReviewMessages } from "../../prompt/model/review-messages";
-import type { ReviewContext } from "../../prompt/model/types";
-import type { ReviewResult } from "../../schema/model/review-result";
+} from "@/review/prompt/consts/tools";
+import { reviewTools } from "@/review/prompt/lib/review-tools";
+import { buildReviewMessages } from "@/review/prompt/model/review-messages";
+import type { ReviewContext } from "@/review/prompt/model/types";
+import type { ReviewResult } from "@/review/schema/model/review-result";
 import { MAX_NUDGES } from "../consts/nudges";
 import { collectToolCalls } from "../lib/collect-tool-calls";
 import { serveReads } from "./serve-reads";

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { createGitHubApp } from "../../github/app/api/create-github-app";
-import { log } from "../../logger";
+import { createGitHubApp } from "@/github/app/api/create-github-app";
+import { log } from "@/logger";
 import { handle, send } from "../api/http-server";
 import type { HandlerDeps } from "../handler/model/types";
 import { createReviewQueue } from "../queue/model/create-review-queue";

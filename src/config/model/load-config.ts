@@ -1,5 +1,5 @@
 import { parse as parseYaml } from "yaml";
-import { log } from "../../logger";
+import { log } from "@/logger";
 import { DEFAULT_CONFIG } from "../consts/defaults";
 import { envOverrides } from "../lib/env-overrides";
 import { pickRepoConfig } from "../lib/pick-repo-config";

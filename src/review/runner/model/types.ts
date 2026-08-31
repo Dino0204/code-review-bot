@@ -1,7 +1,10 @@
-import type { BotConfig } from "../../../config/model/bot-config";
-import type { GitHubClient } from "../../../github/client/model/types";
-import type { LlmClient } from "../../../llm/api/client";
-import type { RepoInstructions, ReviewContext } from "../../prompt/model/types";
+import type { BotConfig } from "@/config/model/bot-config";
+import type { GitHubClient } from "@/github/client/model/types";
+import type { LlmClient } from "@/llm/api/client";
+import type {
+	RepoInstructions,
+	ReviewContext,
+} from "@/review/prompt/model/types";
 
 export interface RunnerDeps {
 	github: GitHubClient;

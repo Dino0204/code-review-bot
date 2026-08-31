@@ -1,6 +1,6 @@
 import type { Octokit } from "@octokit/rest";
-import { log } from "../../../logger";
-import type { RepoRef } from "../../event/model/types";
+import type { RepoRef } from "@/github/event/model/types";
+import { log } from "@/logger";
 
 export async function hasWriteAccess(
 	octokit: Octokit,

@@ -1,9 +1,6 @@
-import type {
-	GitHubClient,
-	ReviewThread,
-} from "../../../github/client/model/types";
-import { log } from "../../../logger";
-import type { FileExcerpt } from "../../prompt/model/types";
+import type { GitHubClient, ReviewThread } from "@/github/client/model/types";
+import { log } from "@/logger";
+import type { FileExcerpt } from "@/review/prompt/model/types";
 import { EXCERPT_RADIUS } from "../consts/radius";
 
 /**

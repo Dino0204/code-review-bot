@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { RawEvent } from "../../github/event/model/types";
-import { log } from "../../logger";
+import type { RawEvent } from "@/github/event/model/types";
+import { log } from "@/logger";
 import { accept } from "../handler/model/accept";
 import type { HandlerDeps } from "../handler/model/types";
 import type { ReviewQueue } from "../queue/model/create-review-queue";

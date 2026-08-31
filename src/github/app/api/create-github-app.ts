@@ -2,7 +2,7 @@ import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/core";
 import { retry } from "@octokit/plugin-retry";
 import { RequestError } from "@octokit/request-error";
-import { describeNetworkError } from "../../../net";
+import { describeNetworkError } from "@/net";
 import { normalizePrivateKey } from "../lib/normalize-private-key";
 import type { AppCredentials, GitHubApp } from "../model/types";
 

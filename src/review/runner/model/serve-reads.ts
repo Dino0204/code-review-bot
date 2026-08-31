@@ -1,11 +1,11 @@
 import { minimatch } from "minimatch";
-import type { BotConfig } from "../../../config/model/bot-config";
-import type { GitHubClient } from "../../../github/client/model/types";
-import type { ToolCall } from "../../../llm/model/types";
-import { log } from "../../../logger";
-import { READ_TOOL } from "../../prompt/consts/tools";
-import type { ReviewContext } from "../../prompt/model/types";
-import { renderPlainSource } from "../../source/lib/render-plain-source";
+import type { BotConfig } from "@/config/model/bot-config";
+import type { GitHubClient } from "@/github/client/model/types";
+import type { ToolCall } from "@/llm/model/types";
+import { log } from "@/logger";
+import { READ_TOOL } from "@/review/prompt/consts/tools";
+import type { ReviewContext } from "@/review/prompt/model/types";
+import { renderPlainSource } from "@/review/source/lib/render-plain-source";
 import { normalizeReadPath } from "../lib/normalize-read-path";
 
 /**

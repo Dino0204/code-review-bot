@@ -1,10 +1,10 @@
-import type { BotConfig } from "../../../config/model/bot-config";
+import type { BotConfig } from "@/config/model/bot-config";
 import type {
 	PullRequestInfo,
 	ReviewThread,
-} from "../../../github/client/model/types";
-import type { DiffFile } from "../../../github/diff/model/types";
-import type { FileSource } from "../../source/model/types";
+} from "@/github/client/model/types";
+import type { DiffFile } from "@/github/diff/model/types";
+import type { FileSource } from "@/review/source/model/types";
 
 /** 리포지토리가 코드 작성자를 위해 두고 있는 지침 문서 (AGENTS.md 등) */
 export interface RepoInstructions {

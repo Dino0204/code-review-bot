@@ -1,4 +1,4 @@
-import { log } from "../../../logger";
+import { log } from "@/logger";
 
 /**
  * 리뷰 작업을 한 번에 하나씩 처리하는 큐.

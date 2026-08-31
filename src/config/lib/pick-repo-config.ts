@@ -1,4 +1,4 @@
-import { log } from "../../logger";
+import { log } from "@/logger";
 import { BOT_NAMESPACES } from "../consts/bot";
 import type { BotConfig } from "../model/bot-config";
 import { pickFileConfig } from "./pick-file-config";

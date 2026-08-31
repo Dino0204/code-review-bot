@@ -1,10 +1,10 @@
-import { meetsSeverity } from "../../../config/lib/severity-rank";
-import type { BotConfig } from "../../../config/model/bot-config";
-import { snapToCommentableLine } from "../../../github/diff/lib/snap-to-commentable-line";
-import type { DiffFile } from "../../../github/diff/model/types";
-import { log } from "../../../logger";
-import type { Finding } from "../../schema/model/finding";
-import type { ReviewResult } from "../../schema/model/review-result";
+import { meetsSeverity } from "@/config/lib/severity-rank";
+import type { BotConfig } from "@/config/model/bot-config";
+import { snapToCommentableLine } from "@/github/diff/lib/snap-to-commentable-line";
+import type { DiffFile } from "@/github/diff/model/types";
+import { log } from "@/logger";
+import type { Finding } from "@/review/schema/model/finding";
+import type { ReviewResult } from "@/review/schema/model/review-result";
 
 /** 모델이 `a/src/x.ts`, `./src/x.ts`, `x.ts` 등으로 흘려 쓴 경로를 diff의 실제 경로에 맞춘다 */
 export function resolveFile(

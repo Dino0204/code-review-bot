@@ -1,7 +1,7 @@
 import { retry } from "@octokit/plugin-retry";
 import { Octokit } from "@octokit/rest";
-import { log } from "../../../logger";
-import type { RepoRef } from "../../event/model/types";
+import type { RepoRef } from "@/github/event/model/types";
+import { log } from "@/logger";
 import type { GitHubClient } from "../model/types";
 import { addReaction } from "./add-reaction";
 import { createIssueComment } from "./create-issue-comment";
