@@ -59,7 +59,7 @@ export async function execute(
 	}
 
 	const pr = await github.getPullRequest(trigger.pr);
-	const config = await loadRepoConfig(github, pr.headSha);
+	const config = await loadRepoConfig(github, pr.headSha, deps.repoOverrides);
 
 	const intent = resolveIntent(trigger, config);
 	if (!intent) {
