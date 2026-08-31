@@ -15,22 +15,36 @@ export interface ServerConfig {
 	repoOverrides: Partial<BotConfig>;
 }
 
+/**
+ * 빈 문자열은 값을 준 것으로 치지 않는다.
+ *
+ * `GITHUB_WEBHOOK_SECRET=` 가 그냥 통과하면 빈 키로 HMAC 을 계산한다 — 서명을 누구나
+ * 만들 수 있으니 웹훅 인증이 없는 것과 같다. 조용히 넘어가느니 부팅에서 멈추는 편이 낫다.
+ */
+const text = z.string().min(1);
+
+/** 켜는 값은 무엇이든 받고 `"false"` 만 끄는 값으로 본다 */
+const flag = z
+	.string()
+	.transform((value) => value !== "false")
+	.optional();
+
 const schema = z
 	.object({
 		PORT: z.coerce.number().int().positive().default(3000),
-		GITHUB_WEBHOOK_SECRET: z.string(),
-		GITHUB_APP_ID: z.string(),
-		GITHUB_APP_PRIVATE_KEY: z.string().optional(),
-		GITHUB_APP_PRIVATE_KEY_PATH: z.string().optional(),
-		GSML_API_KEY: z.string(),
+		GITHUB_WEBHOOK_SECRET: text,
+		GITHUB_APP_ID: text,
+		GITHUB_APP_PRIVATE_KEY: text.optional(),
+		GITHUB_APP_PRIVATE_KEY_PATH: text.optional(),
+		GSML_API_KEY: text,
 
-		REVIEWBOT_BASE_URL: z.string().optional(),
-		REVIEWBOT_LANGUAGE: z.string().optional(),
-		REVIEWBOT_TRIGGER_PREFIX: z.string().optional(),
+		REVIEWBOT_BASE_URL: text.optional(),
+		REVIEWBOT_LANGUAGE: text.optional(),
+		REVIEWBOT_TRIGGER_PREFIX: text.optional(),
 		REVIEWBOT_MIN_SEVERITY: z.enum(SEVERITIES).optional(),
-		REVIEWBOT_AUTO_REVIEW: z.string().optional(),
-		REVIEWBOT_THREAD_REPLY: z.string().optional(),
-		REVIEWBOT_INCLUDE_SOURCES: z.string().optional(),
+		REVIEWBOT_AUTO_REVIEW: flag,
+		REVIEWBOT_THREAD_REPLY: flag,
+		REVIEWBOT_INCLUDE_SOURCES: flag,
 		REVIEWBOT_MAX_EXTRA_READS: z.coerce.number().int().nonnegative().optional(),
 		REVIEWBOT_MAX_FILES: z.coerce.number().int().positive().optional(),
 	})
@@ -47,39 +61,27 @@ const schema = z
 type Env = z.infer<typeof schema>;
 
 /**
- * 빈 문자열은 값이 없는 것으로 본다.
+ * 환경변수 이름을 설정 필드 이름에 붙인다.
  *
- * compose 는 지정하지 않은 변수를 빈 문자열로 넘긴다 — 그것을 값으로 받으면
- * 기본값 대신 빈 언어·빈 접두사가 설정에 얹힌다.
+ * 값이 없는 키는 걷어낸다 — `loadConfig` 가 덮어쓸 값을 그대로 펼치므로,
+ * `undefined` 가 든 키를 넘기면 기본값이 살아남지 못하고 지워진다.
  */
-function present(): Record<string, string> {
-	const out: Record<string, string> = {};
-	for (const [key, value] of Object.entries(process.env)) {
-		if (value) out[key] = value;
-	}
-	return out;
-}
-
-/** 값이 있을 때만 담는다 — `undefined` 를 얹으면 기본값을 지운다 */
 function repoOverrides(env: Env): Partial<BotConfig> {
-	const out: Partial<BotConfig> = {};
-	if (env.REVIEWBOT_BASE_URL) out.baseUrl = env.REVIEWBOT_BASE_URL;
-	if (env.REVIEWBOT_LANGUAGE) out.language = env.REVIEWBOT_LANGUAGE;
-	if (env.REVIEWBOT_TRIGGER_PREFIX)
-		out.triggerPrefix = env.REVIEWBOT_TRIGGER_PREFIX;
-	if (env.REVIEWBOT_MIN_SEVERITY) out.minSeverity = env.REVIEWBOT_MIN_SEVERITY;
-	// "false" 만 끄는 값으로 본다 — 켜는 쪽은 어떤 값이든 받는다
-	if (env.REVIEWBOT_AUTO_REVIEW)
-		out.autoReview = env.REVIEWBOT_AUTO_REVIEW !== "false";
-	if (env.REVIEWBOT_THREAD_REPLY)
-		out.threadReply = env.REVIEWBOT_THREAD_REPLY !== "false";
-	if (env.REVIEWBOT_INCLUDE_SOURCES)
-		out.includeSources = env.REVIEWBOT_INCLUDE_SOURCES !== "false";
-	if (env.REVIEWBOT_MAX_EXTRA_READS !== undefined)
-		out.maxExtraReads = env.REVIEWBOT_MAX_EXTRA_READS;
-	if (env.REVIEWBOT_MAX_FILES !== undefined)
-		out.maxFiles = env.REVIEWBOT_MAX_FILES;
-	return out;
+	const mapped = {
+		baseUrl: env.REVIEWBOT_BASE_URL,
+		language: env.REVIEWBOT_LANGUAGE,
+		triggerPrefix: env.REVIEWBOT_TRIGGER_PREFIX,
+		minSeverity: env.REVIEWBOT_MIN_SEVERITY,
+		autoReview: env.REVIEWBOT_AUTO_REVIEW,
+		threadReply: env.REVIEWBOT_THREAD_REPLY,
+		includeSources: env.REVIEWBOT_INCLUDE_SOURCES,
+		maxExtraReads: env.REVIEWBOT_MAX_EXTRA_READS,
+		maxFiles: env.REVIEWBOT_MAX_FILES,
+	};
+
+	return Object.fromEntries(
+		Object.entries(mapped).filter(([, value]) => value !== undefined),
+	) as Partial<BotConfig>;
 }
 
 /**
@@ -88,7 +90,7 @@ function repoOverrides(env: Env): Partial<BotConfig> {
  * 빠진 값이나 형식이 틀린 값은 여기서 부팅을 멈춘다 — 웹훅을 받고 나서 알아채면 이벤트를 잃는다.
  */
 export const serverConfig = registerAs("server", (): ServerConfig => {
-	const parsed = schema.safeParse(present());
+	const parsed = schema.safeParse(process.env);
 	if (!parsed.success) {
 		const detail = parsed.error.issues
 			.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
