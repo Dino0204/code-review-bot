@@ -21,9 +21,9 @@ diff 파싱의 `Complete` 플래그와 hunk 해시 개념만 가져온다.
 | 축 | 결정 | 근거 |
 |---|---|---|
 | 이행 전략 | 껍데기 교체, 코어 보존 | `diff` 줄 번호 계산과 `prepareFindings`는 GitHub 422를 부르는 위험 구역인데 테스트가 없다. 재작성이 가장 위험한 코드다 |
-| 디렉터리 | `src/core/`(프레임워크 무관) + `src/modules/`(Nest 어댑터) | 위험 구역이 순수 함수로 격리되면 나중에 테스트를 붙일 때 구조를 다시 안 건드린다 |
+| 디렉터리 | `src/core/`(도메인 + 포트) + `src/modules/`(어댑터 + 프로세스 경계) | 핵심 로직을 core 에 두되 구체 구현이 아니라 포트에 의존시킨다. 위험 구역이 격리되어 나중에 테스트를 붙일 때 구조를 다시 안 건드린다 |
 | 프레임워크 | NestJS | 사용자가 아는 백엔드 프레임워크 |
-| 빌드 | tsc + `node_modules` 포함 | esbuild는 `emitDecoratorMetadata`를 지원하지 않아 Nest 기본 DI가 안 돈다 |
+| 빌드 | tsc + `tsc-alias`, CJS, `node_modules` 포함 | esbuild는 `emitDecoratorMetadata` 를 지원하지 않아 Nest 기본 DI 가 안 돈다. Nest 공식 구성이 CJS 라 문서·예제와 맞춘다 — 코드에 ESM 전용 문법이 없어 전환 비용이 없었다 |
 | 큐 | Redis + `@nestjs/bullmq` | 재시도·지연·동시성 제한·중복 제거를 직접 안 짜도 된다. 마커도 같은 Redis에 둔다 |
 | 멀티턴 | `read_file` 도구 루프 유지 | diff만 보고 내리는 오탐을 줄이는 장치 |
 | 출력 규약 | 네이티브 tool calling | 서버측 그래머 강제라 파싱 실패가 구조적으로 줄어든다 |
@@ -42,51 +42,58 @@ diff 파싱의 `Complete` 플래그와 hunk 해시 개념만 가져온다.
 | 쓰레드 답글 | 같이 이전 | 배치·마커와 무관하고 provider 체인만 갈아끼우면 된다 |
 | 작업 순서 | core 분리 → 인프라 → provider 교체 | 구조를 두 번 안 건드린다 |
 
-## 3. 목표 구조
+## 3. 구조
+
+경계 기준은 **핵심 로직인가**다. 도메인 로직과 그것이 의존하는 포트 인터페이스는 `core/`,
+포트의 구체 구현(어댑터)과 프로세스 경계(HTTP 서버, 부팅, 큐 배선)는 `modules/` 다.
+
+I/O 유무를 기준으로 삼지 않는 이유는, 이 봇의 핵심 로직인 `runReview` · `requestReview` 가
+GitHub 과 모델을 부르기 때문이다. 그것을 I/O 라는 이유로 밖에 두면 정작 중요한 것이 core
+바깥에 남는다. 대신 그 로직들이 구체 구현이 아니라 포트에 의존하게 한다 — 이미 그렇게 되어
+있었다. `runReview` 는 Octokit 을 모르고 `GitHubClient` 타입만 안다.
 
 ```
 src/
-  core/                        프레임워크 무관. 데코레이터 없음, I/O 없음
-    diff/
-      parse-unified-diff.ts    (이동) unified diff → DiffFile[]
-      hunk-hash.ts             (신규) (section, body) → sha256, 줄 번호 제외
-      file-hash.ts             (신규) 파일의 hunk 해시들 → 파일 해시
-      commentable-lines.ts     (이동)
-      snap-to-commentable-line.ts (이동)
-      render-file-diff.ts      (이동)
-    batch/
-      build-batches.ts         (이동·개명) 옛 chunk-files. 경로 정렬로 결정적 구성
-      select-changed-files.ts  (신규) 마커와 대조해 다시 볼 파일만 추림
-    review/
-      prepare-findings.ts      (이동) 위험 구역
-      dedupe-key.ts            (분리)
-      merge-results.ts         (이동)
-    schema/
-      finding.ts               (이동) zod
-      review-result.ts         (이동) zod
-      reply.ts                 (이동) zod
-    render/                    (이동) 문자열 생성만
-    config/
-      bot-config.ts            (이동) 리포별 설정 타입·파서
-      providers.ts             (신규) providers.yml zod 스키마
+  core/                    도메인. modules 를 import 하지 않는다 (단방향)
+    config/                설정 타입·병합 (consts, lib, model)
+    diff/                  unified diff 파싱, 줄 스냅, 렌더 (lib, model)
+    event/                 웹훅 payload 파싱 (lib, model)
+    github/port.ts         GitHubClient 포트
+    llm/                   도구 호출 파싱, 타입, LlmClient 포트 (lib, model)
+    ports/logger.ts        Logger 포트 + setLogger
+    review/                리뷰 도메인 전부
+      commands/            트리거 판정
+      prompt/              프롬프트 조립
+      render/              코멘트 문자열 생성
+      runner/              배치 구성, 도구 루프, finding 정제
+      schema/              zod 스키마
+      source/              파일 원본 발췌
+      thread/              쓰레드 답글
 
-  modules/                     Nest. 부수효과가 여기에만 있다
-    app.module.ts
-    webhook/                   서명 검증, 이벤트 파싱, 큐 투입
-    queue/                     BullMQ 등록, 프로세서
-    review/                    리뷰 잡 오케스트레이션
-    thread/                    쓰레드 답글 잡
-    github/                    Octokit 어댑터
-    llm/                       pi-ai 어댑터, provider 체인, failover
-    marker/                    Redis 마커 저장소
-    observability/             구조화 로거
+  modules/                 어댑터와 배선
+    config/env-overrides   process.env → Partial<BotConfig>
+    github/app/            App 인증 어댑터
+    github/client/         Octokit 어댑터
+    llm/client.ts          LlmClient 구현
+    logger.ts              Logger 구현 (콘솔)
+    net.ts                 fetch 오류 해석
+    server/                HTTP, 웹훅, 큐, 핸들러 배선
 ```
 
-`core/`는 `modules/`를 import하지 않는다. 단방향이다.
+경계는 두 명령으로 검증한다. 둘 다 결과가 없어야 한다.
+
+```bash
+grep -rn '@/modules/' src/core/          # core → modules 의존
+grep -rn 'octokit\|fetch(\|node:fs\|process\.env' src/core/   # core 안의 직접 I/O
+```
 
 import 규약은 기존과 같다 — 슬라이스를 넘을 때는 `@/` 별칭(`tsconfig.json` 의 `paths`,
-`@/*` → `src/*`)을 쓰고, 같은 슬라이스 안에서는 상대 경로를 유지한다. 1단계에서 파일을
-옮길 때 이 규칙을 그대로 따른다.
+`@/*` → `src/*`)을 쓰고, 같은 슬라이스 안에서는 상대 경로를 유지한다.
+
+**Logger 포트.** 도메인도 무슨 일이 있었는지는 남겨야 한다 — 지적을 몇 건 왜 버렸는지는
+밖에서 다시 계산할 수 없다. 그래서 로그 호출을 걷어내는 대신 인터페이스만 core 에 두고
+구현은 `modules/logger.ts` 가 넣는다. 부팅에서 `setLogger(consoleLogger)` 를 부르지 않으면
+아무 데도 나가지 않는다 — 테스트에서 로그가 새지 않게 하려는 것이다.
 
 ## 4. 데이터 흐름
 
@@ -213,8 +220,8 @@ zod로 파싱한다. `${VAR}` 는 env에서 치환하고, 값이 비면 **그 pr
 ```ts
 // core/diff
 parseUnifiedDiff(raw: string): DiffFile[]
-hunkHash(section: string, body: string): string           // 줄 번호 제외
-fileHash(file: DiffFile): string                          // hunk 해시들을 순서대로
+hunkHash(hunk: DiffHunk): string                          // 줄 번호 제외
+fileHash(file: DiffFile): string                          // complete 한 hunk 해시들만
 snapToCommentableLine(file: DiffFile, line: number): number | undefined
 
 // core/batch
@@ -232,9 +239,20 @@ classifyError(error: unknown): ErrorClass
 ```
 
 `DiffHunk`에 `complete: boolean` 을 추가한다. 헤더가 선언한 `oldLines`/`newLines` 와 실제
-센 줄 수가 맞는지 검사한 결과다. GitHub이 큰 patch를 잘라 보낼 때 불완전한 hunk가 오는데,
-불완전한 hunk를 근거로 줄 번호를 계산하면 422가 난다. `complete: false` 인 hunk는 코멘트
-대상에서 뺀다.
+센 줄 수가 맞는지 검사한 결과다. 불완전한 hunk를 근거로 줄 번호를 계산하면 422가 나므로
+`complete: false` 인 hunk는 코멘트 대상에서 뺀다.
+
+실제 API 응답을 확인한 결과는 다음과 같다. 공식 문서에는 3000파일 제한만 있고 patch 잘림은
+문서화되어 있지 않다.
+
+- `GET /pulls/{n}/files` 는 큰 파일의 `patch` 를 **자르는 것이 아니라 통째로 생략**한다.
+  `facebook/react#37382` 에서 `yarn.lock`(changes=2180)의 `patch` 필드가 아예 없었다.
+  같은 응답에서 `microsoft/vscode#333394` 는 70,986자 patch를 온전히 줬다 — 크기만의 문제는 아니다.
+- diff media type(`Accept: application/vnd.github.diff`, 우리가 쓰는 쪽)은 같은 PR에서
+  `yarn.lock` 을 포함한 61개 파일을 모두 온전히 줬다. 276KB 였다.
+
+즉 지금 확인된 범위에서 잘린 hunk는 관측되지 않았다. `complete` 는 방어막으로 남기되,
+**이것이 실제로 걸리는 상황을 봤다면 그 조건을 여기 적는다.**
 
 ## 9. 작업 단계
 
@@ -243,9 +261,9 @@ classifyError(error: unknown): ErrorClass
 | # | 작업 | 배포 가능 | 검증 |
 |---|---|---|---|
 | 0 | 이 문서 추가, CLAUDE.md 삭제, 봇 이름을 colombina로 변경 | — | 완료 |
-| 1 | `src/core/` 분리 — 순수 함수 이동, 동작 무변경 | 예 | typecheck, build |
-| 2 | hunk 해시 + `complete` 플래그 추가 | 예 | **실제 PR 필요** — 줄 번호 위험 구역 |
-| 3 | tsc 빌드로 전환, Dockerfile 멀티스테이지 조정 | 예 | 컨테이너 기동 확인 |
+| 1 | `src/core/` · `src/modules/` 분리, Logger 포트 도입 | 예 | 완료 — typecheck, build, biome |
+| 2 | hunk 해시 + `complete` 플래그 추가 | 예 | 완료 — 스모크 확인. **큰 PR 로 실제 확인 필요** |
+| 3 | tsc 빌드 전환(CJS), Dockerfile 멀티스테이지 조정 | 예 | 완료 — 빌드·실행 확인. **도커 이미지 빌드는 미검증**(로컬 데몬 꺼짐, CI 가 확인) |
 | 4 | Nest 스캐폴드 + `modules/` 어댑터, 기존 http-server 대체 | 예 | 웹훅 수신 확인 |
 | 5 | Redis + BullMQ 도입, 인메모리 큐 제거, compose에 redis 추가 | 예 | 재기동 후 잡 재개 확인 |
 | 6 | 마커 저장소 + 증분 재리뷰 + push debounce | 예 | **실제 PR 필요** — 증분 판정 |

@@ -3,17 +3,17 @@
 	"version": "0.1.0",
 	"description": "GitHub Pull Request 코드 리뷰 봇 — gemini-code-assist 대체용",
 	"private": true,
-	"type": "module",
 	"engines": {
 		"node": ">=20"
 	},
 	"scripts": {
-		"build": "node scripts/build.mjs",
-		"typecheck": "tsc --noEmit",
+		"build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"format": "npx @biomejs/biome format --write",
 		"line": "npx @biomejs/biome lint --write",
 		"check": "npx @biomejs/biome check --write",
-		"ci:biome": "npx @biomejs/biome ci ."
+		"ci:biome": "npx @biomejs/biome ci .",
+		"start": "node dist/modules/server/index.js"
 	},
 	"repository": {
 		"type": "git",
@@ -34,6 +34,8 @@
 		"@biomejs/biome": "2.5.10",
 		"@types/node": "^26.1.2",
 		"esbuild": "^0.28.1",
+		"tsc-alias": "^1.9.2",
 		"typescript": "^7.0.2"
-	}
+	},
+	"main": "dist/modules/server/index.js"
 }
