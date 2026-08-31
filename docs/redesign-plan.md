@@ -27,7 +27,7 @@ diff 파싱의 `Complete` 플래그와 hunk 해시 개념만 가져온다.
 | 큐 | Redis + `@nestjs/bullmq` | 재시도·지연·동시성 제한·중복 제거를 직접 안 짜도 된다. 마커도 같은 Redis에 둔다 |
 | 멀티턴 | `read_file` 도구 루프 유지 | diff만 보고 내리는 오탐을 줄이는 장치 |
 | 출력 규약 | 네이티브 tool calling | 서버측 그래머 강제라 파싱 실패가 구조적으로 줄어든다 |
-| 코드 반출 | 제약 폐기 | 리포 종류와 무관하게 모든 provider를 쓴다. CLAUDE.md의 해당 문장을 지운다 |
+| 코드 반출 | 제약 폐기 | 리포 종류와 무관하게 모든 provider를 쓴다 |
 | GSML | 체인에서 제거 | 반출 제약이 사라지면 남는 가치는 무료 쿼터뿐인데, 유일하게 XML 어댑터가 필요한 특수 케이스다 |
 | provider | Google AI Studio, OpenRouter, GitHub Models, Mistral, GLM | tool calling 지원 + 서버 사이드 적합 |
 | failover | 고정 순위 + cooldown, 배치 단위 전환 | cooldown이 provider 단위라 한 번 429가 뜨면 그 PR의 남은 배치도 같은 대체 provider로 간다 — 실제 품질 편차는 작다 |
@@ -197,7 +197,7 @@ zod로 파싱한다. `${VAR}` 는 env에서 치환하고, 값이 비면 **그 pr
 | `cooldown-server` | 500/502/503/504, timeout, connection error, socket hang up | provider를 1분 cooldown, 다음 provider |
 | `split-batch` | context length exceeded, `too many tokens` | cooldown 없이 배치를 반으로 쪼개 같은 provider 재시도. 파일 하나까지 쪼갰는데도 넘치면 그 파일을 건너뛰고 요약에 명시 |
 | `fail-fast` | 400 잘못된 요청, 401/403 인증 | cooldown 없이 그 provider를 이번 잡에서 제외. 모든 provider에서 같은 이유로 실패할 요청에 다섯 번 재시도하는 것은 낭비다 |
-| `schema-violation` | 응답이 zod 스키마를 통과하지 못함 | **우회하지 않고 그 배치를 실패시킨다.** 다른 provider로 넘기지도 않는다 — 모델 서버가 규격을 지키게 하는 것이 클라이언트가 덮는 것보다 낫다 (CLAUDE.md 규약) |
+| `schema-violation` | 응답이 zod 스키마를 통과하지 못함 | **우회하지 않고 그 배치를 실패시킨다.** 다른 provider로 넘기지도 않는다 — 모델이 규격을 지키게 하는 것이 클라이언트가 덮는 것보다 낫다. 덮으면 틀린 줄 번호가 그대로 GitHub까지 가서 422가 된다 |
 
 `fail-fast`와 `schema-violation`은 반드시 로그에 원문 일부를 남긴다. 사용자 입력은 그대로
 안 싣는다.
@@ -238,7 +238,7 @@ classifyError(error: unknown): ErrorClass
 
 | # | 작업 | 배포 가능 | 검증 |
 |---|---|---|---|
-| 0 | CLAUDE.md 갱신(반출 제약·GSML 문단 정리), 이 문서 추가 | — | — |
+| 0 | 이 문서 추가, CLAUDE.md 삭제, 봇 이름을 colombina로 변경 | — | 완료 |
 | 1 | `src/core/` 분리 — 순수 함수 이동, 동작 무변경 | 예 | typecheck, build |
 | 2 | hunk 해시 + `complete` 플래그 추가 | 예 | **실제 PR 필요** — 줄 번호 위험 구역 |
 | 3 | tsc 빌드로 전환, Dockerfile 멀티스테이지 조정 | 예 | 컨테이너 기동 확인 |
