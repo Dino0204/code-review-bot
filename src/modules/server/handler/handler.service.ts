@@ -1,8 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { RawEvent } from "@/core/event/model/types";
+import { log } from "@/core/ports/logger";
+import type { ReviewState } from "@/core/ports/review-state";
 import { createGitHubApp } from "@/modules/github/app/api/create-github-app";
 import { type ServerConfig, serverConfig } from "../config/model/server-config";
-import type { ReviewJob } from "../queue/model/review-job";
+import type { QueueJob } from "../queue/model/review-job";
+import { REVIEW_STATE } from "../state/consts/tokens";
 import { accept } from "./model/accept";
 import { execute } from "./model/execute";
 import type { AcceptedEvent, HandlerDeps } from "./model/types";
@@ -16,7 +19,10 @@ import type { AcceptedEvent, HandlerDeps } from "./model/types";
 export class HandlerService {
 	private readonly deps: HandlerDeps;
 
-	constructor(@Inject(serverConfig.KEY) config: ServerConfig) {
+	constructor(
+		@Inject(serverConfig.KEY) config: ServerConfig,
+		@Inject(REVIEW_STATE) private readonly state: ReviewState,
+	) {
 		this.deps = {
 			app: createGitHubApp({
 				appId: config.githubAppId,
@@ -24,6 +30,7 @@ export class HandlerService {
 			}),
 			gsmlApiKey: config.gsmlApiKey,
 			repoOverrides: config.repoOverrides,
+			state,
 		};
 	}
 
@@ -33,8 +40,13 @@ export class HandlerService {
 	}
 
 	/** 큐 워커가 부른다 — 실제 리뷰가 여기서 돈다 */
-	run(job: ReviewJob): Promise<void> {
-		return execute(
+	async run(job: QueueJob): Promise<void> {
+		if (job.kind === "cleanup") {
+			await this.state.clear(job);
+			log.info(`${job.owner}/${job.repo}#${job.pr} 닫힘 — 리뷰 상태를 지웠다`);
+			return;
+		}
+		await execute(
 			this.deps,
 			job.owner,
 			job.repo,

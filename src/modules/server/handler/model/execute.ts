@@ -39,6 +39,7 @@ export async function execute(
 	trigger: Trigger,
 ): Promise<void> {
 	const slug = `${owner}/${repo}`;
+	const prRef = { owner, repo, pr: trigger.pr };
 	const token = await deps.app.installationToken(installationId);
 	const github = createGitHubClient(token, { owner, repo });
 
@@ -103,8 +104,22 @@ export async function execute(
 		}
 
 		log.info(`${slug}#${pr.number} "${pr.title}" 리뷰 시작`);
-		const runnerDeps: RunnerDeps = { github, llm, config, instructions };
+		// 사람이 부른 리뷰는 처음부터 다시 본다 — 같은 코드를 한 번 더 봐달라는 뜻이다.
+		// 자동 리뷰(푸시·오픈)만 마커를 보고 달라진 파일로 좁힌다.
+		const markers =
+			trigger.kind === "pull_request"
+				? await deps.state.markers(prRef)
+				: undefined;
+		const runnerDeps: RunnerDeps = {
+			github,
+			llm,
+			config,
+			instructions,
+			markers,
+		};
 		const outcome = await runReview(runnerDeps, pr);
+		// 게시까지 끝난 뒤에 남긴다 — 게시에 실패한 파일을 "봤다"고 적으면 영영 안 보게 된다
+		await deps.state.saveMarkers(prRef, outcome.markers);
 		log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건`);
 	} catch (error) {
 		// 실패 사실을 사람이 부른 자리에서 바로 볼 수 있게 남긴다

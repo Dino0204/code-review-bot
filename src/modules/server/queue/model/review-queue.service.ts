@@ -3,7 +3,7 @@ import { Injectable, type OnApplicationShutdown } from "@nestjs/common";
 import type { Queue } from "bullmq";
 import { log } from "@/core/ports/logger";
 import { KEEP_COMPLETED, KEEP_FAILED, REVIEW_QUEUE } from "../consts/queue";
-import type { ReviewJob } from "./review-job";
+import type { QueueJob } from "./review-job";
 
 /** 헬스체크가 그대로 내보내는 큐 상태 */
 export interface QueueStatus {
@@ -27,11 +27,11 @@ export interface QueueStatus {
 @Injectable()
 export class ReviewQueueService implements OnApplicationShutdown {
 	constructor(
-		@InjectQueue(REVIEW_QUEUE) private readonly queue: Queue<ReviewJob>,
+		@InjectQueue(REVIEW_QUEUE) private readonly queue: Queue<QueueJob>,
 	) {}
 
 	/** `delayMs` 를 주면 그만큼 미룬다 — 연달아 들어오는 푸시를 묶는 데 쓴다 */
-	async enqueue(key: string, job: ReviewJob, delayMs = 0): Promise<void> {
+	async enqueue(key: string, job: QueueJob, delayMs = 0): Promise<void> {
 		await this.queue.add(key, job, {
 			deduplication: { id: key, replace: true, keepLastIfActive: true },
 			delay: delayMs,

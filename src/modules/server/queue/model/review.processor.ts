@@ -3,7 +3,7 @@ import type { Job } from "bullmq";
 import { log } from "@/core/ports/logger";
 import { HandlerService } from "../../handler/handler.service";
 import { REVIEW_CONCURRENCY, REVIEW_QUEUE } from "../consts/queue";
-import { parseReviewJob } from "./review-job";
+import { parseQueueJob } from "./review-job";
 
 /**
  * 큐에서 잡을 꺼내 실제 리뷰를 돌리는 워커.
@@ -19,7 +19,7 @@ export class ReviewProcessor extends WorkerHost {
 	}
 
 	override async process(job: Job<unknown>): Promise<void> {
-		await this.handler.run(parseReviewJob(job.data));
+		await this.handler.run(parseQueueJob(job.data));
 	}
 
 	@OnWorkerEvent("completed")

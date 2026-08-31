@@ -5,7 +5,11 @@ import { repoRefFrom } from "@/core/event/lib/repo-ref-from";
 import type { RawEvent, Trigger } from "@/core/event/model/types";
 import { log } from "@/core/ports/logger";
 import { hasMention } from "@/core/review/commands/lib/has-mention";
-import { AUTO_REVIEW_PR_ACTIONS } from "../consts/auto-review-actions";
+import {
+	AUTO_REVIEW_PR_ACTIONS,
+	CLEANUP_PR_ACTIONS,
+	PUSH_DEBOUNCE_MS,
+} from "../consts/auto-review-actions";
 import type { AcceptedEvent } from "./types";
 
 /**
@@ -64,12 +68,35 @@ export function accept(
 		)
 			return undefined;
 	} else if (trigger.kind === "pull_request") {
+		// 닫힌 PR 에는 더 쓸 일이 없다 — 남은 상태를 지우는 작업만 넣는다
+		if (CLEANUP_PR_ACTIONS.includes(trigger.action)) {
+			return {
+				key: `${slug}#${trigger.pr}@closed`,
+				job: {
+					kind: "cleanup",
+					owner: repo.owner,
+					repo: repo.repo,
+					pr: trigger.pr,
+				},
+			};
+		}
 		if (trigger.draft || !AUTO_REVIEW_PR_ACTIONS.includes(trigger.action))
 			return undefined;
 	}
 
 	return {
 		key: queueKey(slug, trigger),
-		job: { owner: repo.owner, repo: repo.repo, installationId, trigger },
+		job: {
+			kind: "trigger",
+			owner: repo.owner,
+			repo: repo.repo,
+			installationId,
+			trigger,
+		},
+		// 푸시만 묶는다. 사람이 부른 명령은 기다리게 하지 않는다.
+		delayMs:
+			trigger.kind === "pull_request" && trigger.action === "synchronize"
+				? PUSH_DEBOUNCE_MS
+				: 0,
 	};
 }

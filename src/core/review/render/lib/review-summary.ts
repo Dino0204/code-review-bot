@@ -59,6 +59,7 @@ export function renderReviewSummary(
 
 	const stats = [
 		`파일 ${meta.reviewedFiles}개 리뷰${meta.skippedFiles ? ` (${meta.skippedFiles}개 제외)` : ""}`,
+		meta.unchangedFiles ? `${meta.unchangedFiles}개는 변경 없어 건너뜀` : "",
 		meta.chunks > 1 ? `${meta.chunks}개 청크로 분할` : "",
 		meta.promptTokens !== undefined
 			? `토큰 ${meta.promptTokens.toLocaleString()} in / ${(meta.completionTokens ?? 0).toLocaleString()} out`

@@ -8,12 +8,23 @@ import type { AuthorAssociation, Trigger } from "@/core/event/model/types";
  * 그래서 "무엇을 할지"를 데이터로만 적고, 실행에 필요한 의존(App 클라이언트 등)은
  * 워커가 자기 것을 쓴다.
  */
-export interface ReviewJob {
+export interface TriggerJob {
+	kind: "trigger";
 	owner: string;
 	repo: string;
 	installationId: number;
 	trigger: Trigger;
 }
+
+/** 닫히거나 머지된 PR 의 상태를 지우는 작업 */
+export interface CleanupJob {
+	kind: "cleanup";
+	owner: string;
+	repo: string;
+	pr: number;
+}
+
+export type QueueJob = TriggerJob | CleanupJob;
 
 const association = z.enum([
 	"OWNER",
@@ -55,12 +66,21 @@ const trigger = z.discriminatedUnion("kind", [
 	}),
 ]) satisfies z.ZodType<Trigger>;
 
-const schema = z.object({
-	owner: z.string().min(1),
-	repo: z.string().min(1),
-	installationId: z.number(),
-	trigger,
-}) satisfies z.ZodType<ReviewJob>;
+const schema = z.discriminatedUnion("kind", [
+	z.object({
+		kind: z.literal("trigger"),
+		owner: z.string().min(1),
+		repo: z.string().min(1),
+		installationId: z.number(),
+		trigger,
+	}),
+	z.object({
+		kind: z.literal("cleanup"),
+		owner: z.string().min(1),
+		repo: z.string().min(1),
+		pr: z.number(),
+	}),
+]) satisfies z.ZodType<QueueJob>;
 
 /**
  * 큐에서 꺼낸 데이터를 검증한다.
@@ -68,7 +88,7 @@ const schema = z.object({
  * Redis 에 남아 있던 잡은 이전 버전이 넣은 것일 수 있다. 형식이 바뀌었는데 그대로 실행하면
  * 엉뚱한 곳에서 `undefined` 로 터져 원인을 찾기 어렵다 — 꺼내는 자리에서 멈춘다.
  */
-export function parseReviewJob(data: unknown): ReviewJob {
+export function parseQueueJob(data: unknown): QueueJob {
 	const parsed = schema.safeParse(data);
 	if (!parsed.success) {
 		const detail = parsed.error.issues

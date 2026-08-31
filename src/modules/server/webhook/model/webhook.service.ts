@@ -55,7 +55,7 @@ export class WebhookService {
 
 		// 리뷰는 몇 분씩 걸린다. 웹훅은 바로 닫고 큐에서 처리한다.
 		try {
-			await this.queue.enqueue(accepted.key, accepted.job);
+			await this.queue.enqueue(accepted.key, accepted.job, accepted.delayMs);
 		} catch (error) {
 			// 큐에 못 넣었으면 이벤트를 잃은 것이다. 200 으로 삼키면 GitHub 전달 기록에도
 			// 성공으로 남아 되돌릴 방법이 없다 — 실패를 남겨 재전송할 수 있게 한다.

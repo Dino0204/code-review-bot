@@ -1,0 +1,22 @@
+/** 상태를 저장할 PR 하나를 가리키는 값 */
+export interface PrRef {
+	owner: string;
+	repo: string;
+	pr: number;
+}
+
+/**
+ * PR 하나에 대한 리뷰 상태 저장소.
+ *
+ * 프로세스가 죽어도 살아남아야 하는 것만 여기에 둔다 — 어디까지 봤는지(마커)가
+ * 그것이다. core 는 이 포트를 부르지 않는다. 값을 받아 결과를 돌려줄 뿐이고,
+ * 읽고 쓰는 것은 modules 쪽이 한다.
+ */
+export interface ReviewState {
+	/** 파일 경로 → 마지막으로 리뷰한 내용의 해시 */
+	markers(ref: PrRef): Promise<Map<string, string>>;
+	/** 이번에 리뷰한 파일만 덮어쓴다 — 손대지 않은 파일의 마커는 그대로 남는다 */
+	saveMarkers(ref: PrRef, hashes: Map<string, string>): Promise<void>;
+	/** PR 이 닫히거나 머지되면 이 PR 의 상태를 통째로 지운다 */
+	clear(ref: PrRef): Promise<void>;
+}

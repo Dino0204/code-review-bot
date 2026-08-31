@@ -19,9 +19,18 @@ export async function runReview(
 	pr: PullRequestInfo,
 ): Promise<ReviewOutcome> {
 	const { github, llm, config } = deps;
-	const { context, skippedFiles } = await gatherContext(deps, pr);
+	const { context, skippedFiles, unchangedFiles, hashes } = await gatherContext(
+		deps,
+		pr,
+	);
 
 	if (context.diffFiles.length === 0) {
+		// 증분에서 걸러져 볼 것이 없는 경우다 — 이미 단 코멘트가 그대로 유효하므로
+		// "변경 없음" 을 새로 게시하지 않는다. 푸시마다 코멘트가 쌓이면 그게 소음이다.
+		if (unchangedFiles > 0) {
+			log.info("이미 리뷰한 내용 그대로라 새로 게시하지 않는다");
+			return { posted: false, findings: 0, inline: 0, markers: hashes };
+		}
 		await github.createIssueComment(
 			pr.number,
 			renderPlainComment(
@@ -29,7 +38,7 @@ export async function runReview(
 				"리뷰할 변경 사항이 없다. (제외 패턴에 걸렸거나 바이너리/삭제만 포함된 PR)",
 			),
 		);
-		return { posted: true, findings: 0, inline: 0 };
+		return { posted: true, findings: 0, inline: 0, markers: hashes };
 	}
 
 	const sources = context.sources ?? [];
@@ -85,6 +94,7 @@ export async function runReview(
 		{
 			reviewedFiles: context.diffFiles.length,
 			skippedFiles,
+			unchangedFiles,
 			promptTokens: llm.totalUsage.prompt_tokens,
 			completionTokens: llm.totalUsage.completion_tokens,
 			chunks: chunks.length,
@@ -106,5 +116,6 @@ export async function runReview(
 		posted: true,
 		findings: inline.length + overflow.length,
 		inline: posted,
+		markers: hashes,
 	};
 }
