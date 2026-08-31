@@ -142,7 +142,10 @@ export function createLlmClient(spec: ProviderSpec): LlmClient {
 			totalUsage.completion_tokens += response.usage.output;
 			totalUsage.total_tokens += response.usage.totalTokens;
 
-			if (response.stopReason === "error" || response.stopReason === "aborted") {
+			if (
+				response.stopReason === "error" ||
+				response.stopReason === "aborted"
+			) {
 				const detail = response.errorMessage ?? "이유를 주지 않았다";
 				throw new LlmError(
 					`${spec.name} 응답 실패(${response.stopReason}): ${detail}`,
