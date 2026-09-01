@@ -3,24 +3,6 @@ import type { RepoRef } from "@/core/event/model/types";
 import type { InlineComment, ReviewComment } from "@/core/github/port";
 import { log } from "@/core/ports/logger";
 
-function postReview(
-	octokit: Octokit,
-	repo: RepoRef,
-	number: number,
-	commitSha: string,
-	body: string,
-	comments?: ReviewComment[],
-) {
-	return octokit.rest.pulls.createReview({
-		...repo,
-		pull_number: number,
-		commit_id: commitSha,
-		event: "COMMENT",
-		body,
-		...(comments ? { comments } : {}),
-	});
-}
-
 export async function createReview(
 	octokit: Octokit,
 	repo: RepoRef,
@@ -40,14 +22,19 @@ export async function createReview(
 	}));
 
 	try {
-		await postReview(octokit, repo, number, commitSha, body, payload);
+		await octokit.rest.pulls.createReview({
+			...repo,
+			pull_number: number,
+			commit_id: commitSha,
+			event: "COMMENT",
+			body,
+			comments: payload,
+		});
 		return { posted: payload.length, degraded: false };
 	} catch (error) {
+		// 여기서 요약을 대신 게시하지 않는다 — 부른 쪽이 이 지적들을 요약 코멘트에 모아 싣는다
 		if (payload.length === 0) throw error;
-		log.warn(
-			`인라인 코멘트 등록 실패 — 요약 코멘트로 대체한다: ${(error as Error).message}`,
-		);
-		await postReview(octokit, repo, number, commitSha, body);
+		log.warn(`인라인 코멘트 등록 실패: ${(error as Error).message}`);
 		return { posted: 0, degraded: true };
 	}
 }

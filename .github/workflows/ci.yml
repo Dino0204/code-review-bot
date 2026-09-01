@@ -52,7 +52,8 @@ jobs:
 
   image:
     needs: [typecheck, build, biome]
-    if: github.event_name == 'push'
+    # main 에 반영된 커밋만 이미지로 민다 — PR 검사나 다른 브랜치 푸시는 통과만 시킨다
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -7,13 +7,13 @@
 		"node": ">=20"
 	},
 	"scripts": {
-		"build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
+		"build": "rm -rf dist && tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"format": "npx @biomejs/biome format --write",
 		"line": "npx @biomejs/biome lint --write",
 		"check": "npx @biomejs/biome check --write",
 		"ci:biome": "npx @biomejs/biome ci .",
-		"start": "node dist/modules/server/index.js"
+		"start": "node dist/modules/server/main.js"
 	},
 	"repository": {
 		"type": "git",
@@ -21,21 +21,31 @@
 	},
 	"license": "MIT",
 	"dependencies": {
+		"@mariozechner/pi-ai": "^0.73.1",
+		"@nestjs/bullmq": "^12.0.0",
+		"@nestjs/common": "^12.0.1",
+		"@nestjs/config": "^12.0.0",
+		"@nestjs/core": "^12.0.1",
+		"@nestjs/platform-express": "^12.0.1",
 		"@octokit/auth-app": "^8.3.0",
 		"@octokit/core": "^7.0.7",
 		"@octokit/plugin-retry": "^8.1.1",
 		"@octokit/request-error": "^7.1.1",
 		"@octokit/rest": "^22.0.1",
+		"bullmq": "^6.3.2",
+		"ioredis": "^6.0.0",
 		"minimatch": "^10.2.6",
+		"reflect-metadata": "^0.2.2",
+		"rxjs": "^7.8.2",
 		"yaml": "^2.9.0",
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.10",
+		"@types/express": "^5.0.6",
 		"@types/node": "^26.1.2",
-		"esbuild": "^0.28.1",
 		"tsc-alias": "^1.9.2",
 		"typescript": "^7.0.2"
 	},
-	"main": "dist/modules/server/index.js"
+	"main": "dist/modules/server/main.js"
 }

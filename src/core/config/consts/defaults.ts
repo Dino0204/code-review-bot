@@ -1,17 +1,15 @@
 import type { BotConfig } from "../model/bot-config";
 
 export const DEFAULT_CONFIG: BotConfig = {
-	// GSML 게이트웨이는 모델 하나만 서빙하고 요청 body의 model 필드를 무시한다.
-	baseUrl: "http://ssh.gsmsv.site:26145/v1",
 	language: "ko",
 	temperature: 0.2,
-	// 이 모델은 추론을 끌 수 없고, 그 추론 토큰이 max_tokens를 함께 소비한다.
-	// 부족하면 응답이 잘리므로 넉넉히 잡는다 — 잘리면 클라이언트가 예산을 두 배로 올려 한 번 더 시도한다.
+	// 추론을 켜는 모델이 섞여 있고 그 추론 토큰도 여기서 나가므로 넉넉히 잡는다.
+	// 모델이 아는 상한을 넘기면 클라이언트가 모델 쪽 값으로 낮춘다.
 	maxOutputTokens: 16384,
 
-	// 컨텍스트 창은 131,072토큰이고 출력도 여기서 나눠 쓴다.
-	// 코드 기준 대략 3.5자 ≈ 1토큰이라 이 값이 4만 토큰 언저리다 — 출력 예산을 빼도 여유가 있다.
-	maxPromptChars: 140_000,
+	// 실제 배치 크기는 이 값과 1순위 provider 예산 중 작은 쪽이다 — 여기 값은
+	// provider 가 아무리 커도 넘지 않을 상한이고, 좁히는 것은 providers.yml 이 한다.
+	maxPromptChars: 400_000,
 	maxFiles: 40,
 	maxFileChars: 24_000,
 

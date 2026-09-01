@@ -1,140 +1,179 @@
-import { parseToolCalls } from "@/core/llm/lib/parse-tool-calls";
+import type { AssistantMessage, Context, Message } from "@mariozechner/pi-ai";
 import { stripThinkBlock } from "@/core/llm/lib/strip-think-block";
-import { withToolSystemBlock } from "@/core/llm/lib/tool-system-block";
 import type { LlmClient } from "@/core/llm/model/client";
-import { LlmError } from "@/core/llm/model/errors";
+import { LlmError, OutputTruncatedError } from "@/core/llm/model/errors";
+import type { ProviderSpec } from "@/core/llm/model/provider";
 import type {
 	ChatMessage,
-	ChatOptions,
-	LlmClientOptions,
 	TokenUsage,
+	ToolCall,
+	ToolChatResult,
 } from "@/core/llm/model/types";
 import { log } from "@/core/ports/logger";
 import { describeNetworkError } from "@/modules/net";
+import { loadPi, toPiModel, toPiTools } from "./pi";
 
-interface ChatCompletion {
-	choices?: Array<{
-		finish_reason?: string;
-		message?: { content?: string | null };
-	}>;
-	usage?: {
-		prompt_tokens?: number;
-		completion_tokens?: number;
-		total_tokens?: number;
-	};
-	error?: { message?: string };
+/** 대화 한 줄을 pi-ai 메시지로 옮긴다. system 은 여기 오지 않는다 — 위에서 걸러진다 */
+function toPiMessage(message: ChatMessage): Message | undefined {
+	const timestamp = Date.now();
+	switch (message.role) {
+		case "system":
+			return undefined;
+		case "user":
+			return { role: "user", content: message.content, timestamp };
+		case "assistant":
+			return {
+				role: "assistant",
+				content: [
+					...(message.content
+						? [{ type: "text" as const, text: message.content }]
+						: []),
+					...(message.toolCalls ?? []).map((call) => ({
+						type: "toolCall" as const,
+						id: call.id,
+						name: call.name,
+						arguments: call.arguments,
+					})),
+				],
+				api: "openai-completions",
+				provider: "replay",
+				model: "replay",
+				usage: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 0,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				stopReason: "toolUse",
+				timestamp,
+			};
+		case "toolResult":
+			return {
+				role: "toolResult",
+				toolCallId: message.toolCallId,
+				toolName: message.toolName,
+				content: [{ type: "text", text: message.content }],
+				isError: false,
+				timestamp,
+			};
+	}
+}
+
+/** 여러 개가 와도 하나로 합친다 — pi-ai 의 Context 는 시스템 프롬프트를 하나만 받는다 */
+function systemPrompt(messages: ChatMessage[]): string | undefined {
+	const parts = messages
+		.filter((message) => message.role === "system")
+		.map((message) => message.content);
+	return parts.length ? parts.join("\n\n") : undefined;
+}
+
+function readResult(response: AssistantMessage): ToolChatResult {
+	const toolCalls: ToolCall[] = [];
+	const texts: string[] = [];
+
+	for (const block of response.content) {
+		if (block.type === "toolCall")
+			toolCalls.push({
+				id: block.id,
+				name: block.name,
+				arguments: block.arguments,
+			});
+		else if (block.type === "text") texts.push(block.text);
+	}
+
+	return { toolCalls, text: stripThinkBlock(texts.join("\n")) };
 }
 
 /**
- * GSML 게이트웨이용 구현.
+ * provider 하나에 붙는 클라이언트.
  *
- * 이 게이트웨이는 OpenAI의 `tools` 파라미터를 조용히 버린다(HTTP 200에 에러도 없다) —
- * 상류 llama.cpp가 `--jinja` 없이 떠 있어 채팅 템플릿의 도구 분기가 실행되지 않기 때문이다.
- * 그래서 템플릿이 해줬어야 할 일을 여기서 직접 한다: 도구 정의를 system 메시지로 주입하고
- * 응답의 `<tool_call>` XML을 직접 파싱한다. 자세한 근거는 buildToolSystemBlock 주석에 있다.
+ * 도구는 네이티브 tool calling 으로 넘긴다 — 서버가 그래머를 강제하므로 형식이 깨진
+ * 응답을 우리가 파싱해 건져낼 일이 없다. 실패는 그대로 던지고, 어느 provider 로
+ * 넘길지는 체인이 정한다.
  */
-export function createLlmClient(options: LlmClientOptions): LlmClient {
-	if (!options.apiKey) throw new LlmError("API 키가 비어 있다");
-	const apiKey = options.apiKey;
-	const baseUrl = (options.baseUrl ?? "http://ssh.gsmsv.site:26145/v1").replace(
-		/\/+$/,
-		"",
-	);
-	const timeoutMs = options.timeoutMs ?? 600_000;
-
+export function createLlmClient(spec: ProviderSpec): LlmClient {
 	const totalUsage: TokenUsage = {
 		prompt_tokens: 0,
 		completion_tokens: 0,
 		total_tokens: 0,
 	};
 
-	async function chat(
-		messages: ChatMessage[],
-		chatOptions: ChatOptions = {},
-	): Promise<string> {
-		const maxTokens = chatOptions.maxTokens ?? 8192;
-		// GSML 게이트웨이는 모델 하나만 서빙하고 body의 model 필드를 무시하므로 넘기지 않는다.
-		const body: Record<string, unknown> = {
-			messages,
-			stream: false,
-			temperature: chatOptions.temperature ?? 0.2,
-			max_tokens: maxTokens,
-		};
-
-		let response: Response;
-		try {
-			response = await fetch(`${baseUrl}/chat/completions`, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Authorization: `Bearer ${apiKey}`,
-				},
-				body: JSON.stringify(body),
-				signal: AbortSignal.timeout(timeoutMs),
-			});
-		} catch (error) {
-			throw new LlmError(
-				`모델 서버 네트워크 오류: ${describeNetworkError(error)}`,
-			);
-		}
-
-		const text = await response.text();
-		if (!response.ok)
-			throw new LlmError(
-				`모델 서버 HTTP ${response.status}: ${text.slice(0, 500)}`,
-			);
-
-		let data: ChatCompletion;
-		try {
-			data = JSON.parse(text) as ChatCompletion;
-		} catch {
-			throw new LlmError(`모델 응답이 JSON이 아니다: ${text.slice(0, 300)}`);
-		}
-		if (data.error?.message)
-			throw new LlmError(`모델 오류: ${data.error.message}`);
-
-		if (data.usage) {
-			totalUsage.prompt_tokens += data.usage.prompt_tokens ?? 0;
-			totalUsage.completion_tokens += data.usage.completion_tokens ?? 0;
-			totalUsage.total_tokens += data.usage.total_tokens ?? 0;
-		}
-
-		const choice = data.choices?.[0];
-		const finishReason = choice?.finish_reason ?? "unknown";
-		const usage = data.usage;
-		log.info(
-			`모델 응답 — finish_reason=${finishReason}` +
-				(usage
-					? `, 토큰 ${usage.prompt_tokens ?? 0} in / ${usage.completion_tokens ?? 0} out`
-					: ""),
-		);
-
-		// max_tokens에서 잘린 응답은 `<tool_call>` 이 닫히지 않아 파싱에서 통째로 버려진다.
-		// 그러면 결과만 봐서는 모델이 도구를 안 부른 것과 구분되지 않으므로 여기서 남긴다.
-		if (finishReason === "length") {
-			log.warn(
-				`응답이 max_tokens(${maxTokens})에서 잘렸다 — 도구 호출이 온전하지 않을 수 있다`,
-			);
-		}
-
-		const content = choice?.message?.content ?? "";
-		if (!content.trim()) {
-			throw new LlmError(
-				`모델이 빈 응답을 반환했다 (finish_reason=${finishReason})`,
-			);
-		}
-		return content;
-	}
-
 	return {
 		totalUsage,
-		async chatWithTools(messages, tools, chatOptions = {}) {
-			const content = await chat(
-				withToolSystemBlock(messages, tools),
-				chatOptions,
+
+		async chatWithTools(messages, tools, options = {}) {
+			const pi = await loadPi();
+			const model = toPiModel(pi, spec);
+			const context: Context = {
+				...(systemPrompt(messages)
+					? { systemPrompt: systemPrompt(messages) }
+					: {}),
+				messages: messages
+					.map(toPiMessage)
+					.filter((message): message is Message => message !== undefined),
+				tools: toPiTools(tools),
+			};
+
+			const maxTokens = Math.min(
+				options.maxTokens ?? model.maxTokens,
+				model.maxTokens,
 			);
-			log.debug(`모델 원문 응답\n${content}`);
-			return parseToolCalls(stripThinkBlock(content));
+
+			let response: AssistantMessage;
+			try {
+				response = await pi.complete(model, context, {
+					apiKey: spec.apiKey,
+					temperature: options.temperature ?? 0.2,
+					maxTokens,
+					timeoutMs: spec.timeoutMs,
+					// SDK 가 timeoutMs 를 안 보는 경로도 있어 신호로도 끊는다
+					signal: AbortSignal.timeout(spec.timeoutMs),
+				});
+			} catch (error) {
+				throw new LlmError(
+					`${spec.name} 호출 실패: ${describeNetworkError(error)}`,
+					error instanceof Error ? error.message : String(error),
+				);
+			}
+
+			totalUsage.prompt_tokens += response.usage.input;
+			totalUsage.completion_tokens += response.usage.output;
+			totalUsage.total_tokens += response.usage.totalTokens;
+
+			if (
+				response.stopReason === "error" ||
+				response.stopReason === "aborted"
+			) {
+				const detail = response.errorMessage ?? "이유를 주지 않았다";
+				throw new LlmError(
+					`${spec.name} 응답 실패(${response.stopReason}): ${detail}`,
+					detail,
+				);
+			}
+
+			const result = readResult(response);
+			log.info(
+				`${spec.name} 응답 — stop=${response.stopReason}, 도구 ${result.toolCalls.length}건`,
+				{
+					provider: spec.name,
+					model: spec.model,
+					stopReason: response.stopReason,
+					toolCalls: result.toolCalls.length,
+					inputTokens: response.usage.input,
+					outputTokens: response.usage.output,
+				},
+			);
+
+			// 잘린 응답은 도구 호출이 중간에서 끊겼을 수 있다. 받은 만큼 쓰면 지적 몇 건이
+			// 소리 없이 사라지므로 여기서 멈추고 배치를 쪼개게 한다.
+			if (response.stopReason === "length")
+				throw new OutputTruncatedError(
+					`${spec.name} 응답이 출력 상한(${maxTokens})에서 잘렸다`,
+				);
+
+			return result;
 		},
 	};
 }

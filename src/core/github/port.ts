@@ -61,6 +61,12 @@ export interface GitHubClient {
 	getPullRequestDiff(number: number): Promise<string>;
 	readFile(path: string, ref: string): Promise<string | undefined>;
 	createIssueComment(number: number, body: string): Promise<number>;
+	/**
+	 * 이미 단 이슈 코멘트를 고쳐 쓴다.
+	 *
+	 * 사람이 지웠으면 `false` — 부른 쪽이 새로 달지, 그냥 넘어갈지 정한다.
+	 */
+	updateIssueComment(commentId: number, body: string): Promise<boolean>;
 	createReview(
 		number: number,
 		commitSha: string,

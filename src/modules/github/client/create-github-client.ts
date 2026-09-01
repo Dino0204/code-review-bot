@@ -12,6 +12,7 @@ import { getReviewThread } from "./get-review-thread";
 import { hasWriteAccess } from "./has-write-access";
 import { readFile } from "./read-file";
 import { replyToReviewComment } from "./reply-to-review-comment";
+import { updateIssueComment } from "./update-issue-comment";
 
 const RETRIES = 2;
 
@@ -36,6 +37,8 @@ export function createGitHubClient(token: string, repo: RepoRef): GitHubClient {
 		readFile: (path, ref) => readFile(octokit, repo, path, ref),
 		createIssueComment: (number, body) =>
 			createIssueComment(octokit, repo, number, body),
+		updateIssueComment: (commentId, body) =>
+			updateIssueComment(octokit, repo, commentId, body),
 		createReview: (number, commitSha, body, comments) =>
 			createReview(octokit, repo, number, commitSha, body, comments),
 		getReviewThread: (number, commentId) =>

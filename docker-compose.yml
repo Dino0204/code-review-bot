@@ -1,5 +1,5 @@
 # SV에 올릴 때 쓰는 구성.
-#   1. .env 에 GSML_API_KEY / GITHUB_APP_ID / GITHUB_WEBHOOK_SECRET 을 채운다
+#   1. .env 에 provider 키(GOOGLE_API_KEY 등) / GITHUB_APP_ID / GITHUB_WEBHOOK_SECRET 을 채운다
 #   2. secrets/app-private-key.pem 에 GitHub App 개인키를 둔다
 #   3. docker compose up -d --build
 services:
@@ -8,16 +8,43 @@ services:
     image: ghcr.io/it-play/code-review-bot:${IMAGE_TAG:-main}
     build: .
     restart: unless-stopped
+    depends_on:
+      redis:
+        # 큐가 없으면 웹훅을 받아도 잃는다 — Redis 가 응답할 때까지 기다렸다 뜬다
+        condition: service_healthy
     ports:
       - '${PORT:-3000}:3000'
     environment:
-      GSML_API_KEY: ${GSML_API_KEY:?GSML_API_KEY가 필요하다}
+      # providers.yml 이 참조하는 키들. 없는 provider 는 체인에서 빠진다
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GLM_API_KEY: ${GLM_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       GITHUB_APP_ID: ${GITHUB_APP_ID:?GITHUB_APP_ID가 필요하다}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:?GITHUB_WEBHOOK_SECRET이 필요하다}
       # 개인키는 값이 길고 줄바꿈이 깨지기 쉬워 파일로 마운트한다
       GITHUB_APP_PRIVATE_KEY_PATH: /run/secrets/app-private-key.pem
-      # 같은 호스트에서 모델을 돌린다면 localhost로 바꾼다 — 키가 네트워크를 안 건넌다
-      REVIEWBOT_BASE_URL: ${REVIEWBOT_BASE_URL:-http://ssh.gsmsv.site:26145/v1}
+      REDIS_URL: redis://redis:6379
+      LOG_FORMAT: ${LOG_FORMAT:-text}
       REVIEWBOT_DEBUG: ${REVIEWBOT_DEBUG:-}
     volumes:
       - ./secrets/app-private-key.pem:/run/secrets/app-private-key.pem:ro
+      # 이미지에 든 것을 덮어쓴다 — provider 를 바꾸는 데 재빌드가 필요 없다
+      - ./providers.yml:/app/providers.yml:ro
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    # 큐에 쌓인 잡은 재기동에서 살아남아야 한다 — appendonly 로 디스크에 남긴다
+    command: ['redis-server', '--appendonly', 'yes']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis-data:/data
+    # 포트를 밖으로 열지 않는다 — 봇만 쓰는 내부 네트워크다
+
+volumes:
+  redis-data:

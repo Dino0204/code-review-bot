@@ -15,25 +15,27 @@ import { collectToolCalls } from "../lib/collect-tool-calls";
 import { serveReads } from "./serve-reads";
 import type { RunnerDeps } from "./types";
 
-/** 도구를 부르지 않은 응답에 붙이는 교정 지시. 형식은 도구 블록에 이미 있으므로 되풀이하지 않는다. */
+/** 도구를 부르지 않은 응답에 붙이는 교정 지시 */
 function retryNudge(): string {
 	return [
 		"방금 응답에는 도구 호출이 없었다. 본문만 쓴 응답은 전달되지 않고 버려진다.",
 		`같은 리뷰를 ${SUMMARY_TOOL} 호출 한 번과, 지적마다 ${FINDING_TOOL} 호출로 다시 제출하라.`,
-		"<tool_call> 블록 밖에는 아무것도 쓰지 마라.",
 	].join("\n");
 }
 
 /**
  * 모델에게 도구를 제시해 리뷰 결과를 받는다.
  *
- * 모델이 `read_file` 을 부르면 그 파일을 읽어 대화에 실어주고 다시 묻는다 —
+ * 모델이 `read_file` 을 부르면 그 파일을 읽어 도구 결과로 돌려주고 다시 묻는다 —
  * diff에 없는 코드가 판단에 필요할 때 추측 대신 확인하게 하려는 것이다.
  * 리뷰 도구를 부른 시점에 대화가 끝나므로, 읽기 요청이 계속되면 상한에서 멈춘다.
  *
- * 도구 주입은 그래머 강제가 아니라 프롬프트 기반이므로 모델이 도구를 아예 안 부를 수 있다.
- * 그 경우 한 번 더 시도하고, 그래도 못 받으면 모델이 쓴 본문을 요약으로 대신 실어
- * 인라인 코멘트 없이도 리뷰가 통째로 사라지지 않게 한다.
+ * 도구는 네이티브 tool calling 으로 넘기지만 모델이 아예 안 부를 수는 있다. 그 경우
+ * 한 번 더 시도하고, 그래도 못 받으면 모델이 쓴 본문을 요약으로 대신 실어 인라인
+ * 코멘트 없이도 리뷰가 통째로 사라지지 않게 한다.
+ *
+ * 이 함수 하나가 provider 하나 위에서 끝까지 돈다 — 도중에 갈아타면 앞선 도구 호출과
+ * 결과의 짝이 어긋난다. 어느 provider 로 넘길지는 체인이 배치 단위로 정한다.
  */
 export async function requestReview(
 	deps: RunnerDeps,
@@ -56,7 +58,7 @@ export async function requestReview(
 
 	const maxRounds = MAX_NUDGES + config.maxExtraReads + 1;
 	for (let round = 1; round <= maxRounds; round++) {
-		const { toolCalls, text, raw } = await llm.chatWithTools(
+		const { toolCalls, text } = await llm.chatWithTools(
 			conversation,
 			tools,
 			options,
@@ -77,7 +79,7 @@ export async function requestReview(
 		}
 
 		if (readCalls.length > 0) {
-			const { message, granted } = await serveReads(
+			const { messages, granted } = await serveReads(
 				github,
 				readCalls,
 				context,
@@ -86,8 +88,8 @@ export async function requestReview(
 				reads,
 			);
 			reads += granted;
-			conversation.push({ role: "assistant", content: raw });
-			conversation.push({ role: "user", content: message });
+			conversation.push({ role: "assistant", content: text, toolCalls });
+			conversation.push(...messages);
 			continue;
 		}
 
@@ -97,7 +99,7 @@ export async function requestReview(
 		if (nudges >= MAX_NUDGES) break;
 
 		// 재시도는 같은 프롬프트를 그대로 다시 보내는 대신 무엇이 잘못됐는지 알려준다.
-		conversation.push({ role: "assistant", content: raw });
+		conversation.push({ role: "assistant", content: text });
 		conversation.push({ role: "user", content: retryNudge() });
 	}
 

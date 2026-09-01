@@ -5,9 +5,12 @@ import { repoRefFrom } from "@/core/event/lib/repo-ref-from";
 import type { RawEvent, Trigger } from "@/core/event/model/types";
 import { log } from "@/core/ports/logger";
 import { hasMention } from "@/core/review/commands/lib/has-mention";
-import { AUTO_REVIEW_PR_ACTIONS } from "../consts/auto-review-actions";
-import { execute } from "./execute";
-import type { AcceptedEvent, HandlerDeps } from "./types";
+import {
+	AUTO_REVIEW_PR_ACTIONS,
+	CLEANUP_PR_ACTIONS,
+	PUSH_DEBOUNCE_MS,
+} from "../consts/auto-review-actions";
+import type { AcceptedEvent } from "./types";
 
 /**
  * 큐에서 중복을 걸러내는 키.
@@ -30,7 +33,6 @@ function queueKey(slug: string, trigger: Trigger): string {
  * 실제 명령 해석은 리포지토리 설정을 읽은 뒤에 한다.
  */
 export function accept(
-	deps: HandlerDeps,
 	eventName: string,
 	payload: RawEvent,
 ): AcceptedEvent | undefined {
@@ -66,12 +68,35 @@ export function accept(
 		)
 			return undefined;
 	} else if (trigger.kind === "pull_request") {
+		// 닫힌 PR 에는 더 쓸 일이 없다 — 남은 상태를 지우는 작업만 넣는다
+		if (CLEANUP_PR_ACTIONS.includes(trigger.action)) {
+			return {
+				key: `${slug}#${trigger.pr}@closed`,
+				job: {
+					kind: "cleanup",
+					owner: repo.owner,
+					repo: repo.repo,
+					pr: trigger.pr,
+				},
+			};
+		}
 		if (trigger.draft || !AUTO_REVIEW_PR_ACTIONS.includes(trigger.action))
 			return undefined;
 	}
 
 	return {
 		key: queueKey(slug, trigger),
-		run: () => execute(deps, repo.owner, repo.repo, installationId, trigger),
+		job: {
+			kind: "trigger",
+			owner: repo.owner,
+			repo: repo.repo,
+			installationId,
+			trigger,
+		},
+		// 푸시만 묶는다. 사람이 부른 명령은 기다리게 하지 않는다.
+		delayMs:
+			trigger.kind === "pull_request" && trigger.action === "synchronize"
+				? PUSH_DEBOUNCE_MS
+				: 0,
 	};
 }
