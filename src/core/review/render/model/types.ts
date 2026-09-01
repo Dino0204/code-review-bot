@@ -10,4 +10,6 @@ export interface ReviewMeta {
 	promptTokens?: number;
 	completionTokens?: number;
 	chunks: number;
+	/** 이번 리뷰에서 배치를 처리한 provider·모델 — fallback 이 일어나면 둘 이상 */
+	models?: string[];
 }

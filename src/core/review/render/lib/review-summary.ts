@@ -64,7 +64,8 @@ export function renderReviewSummary(
 		const rest = meta.failedFiles.length - shown.length;
 		parts.push(
 			"",
-			`> ⚠️ 다음 ${meta.failedFiles.length}개 파일은 이번에 리뷰하지 못했다. 재시도가 남아 있으면 자동으로 다시 보고, 아니면 \`/review\` 로 다시 부르면 된다.`,
+			"> [!WARNING]",
+			`> 다음 ${meta.failedFiles.length}개 파일은 이번에 리뷰하지 못했다. 재시도가 남아 있으면 자동으로 다시 보고, 아니면 \`/review\` 로 다시 부르면 된다.`,
 			">",
 			`> ${shown.map((path) => `\`${path}\``).join(", ")}${rest ? ` 외 ${rest}개` : ""}`,
 		);
@@ -80,11 +81,12 @@ export function renderReviewSummary(
 		meta.promptTokens !== undefined
 			? `토큰 ${meta.promptTokens.toLocaleString()} in / ${(meta.completionTokens ?? 0).toLocaleString()} out`
 			: "",
+		meta.models?.length ? `모델 ${meta.models.join(", ")}` : "",
 	]
 		.filter(Boolean)
 		.join(" · ");
 
-	parts.push("", "---", `<sub>${stats}</sub>`);
+	parts.push("", "> [!NOTE]", `> ${stats}`);
 
 	return parts.join("\n");
 }

@@ -33,6 +33,13 @@ export interface ChainDeps {
 export interface ProviderChain {
 	/** 체인 전체에서 누적된 토큰 사용량 */
 	readonly totalUsage: TokenUsage;
+	/**
+	 * 이번 체인에서 배치를 실제로 처리한 provider 들 — 처음 성공한 순서대로, 중복 없이.
+	 *
+	 * fallback 이 일어나면 둘 이상이 담긴다. 요약 코멘트 하단에 어떤 모델이 리뷰했는지
+	 * 적는 데 쓴다. 형식은 `describeProvider` 와 같은 `name(model)`.
+	 */
+	readonly usedProviders: string[];
 	/** 1순위 provider 의 프롬프트 예산 — 배치를 이 크기로 묶는다 */
 	readonly promptBudget: number;
 	/**
@@ -55,9 +62,15 @@ export function createProviderChain(deps: ChainDeps): ProviderChain {
 	// 인증 실패처럼 다시 불러도 같은 결과가 나올 provider 는 이번 잡에서 빼둔다.
 	// cooldown 과 달리 프로세스 밖으로 나가지 않는다 — 키를 고치면 다음 잡부터 다시 쓴다.
 	const excluded = new Set<string>();
+	// 배치를 성사시킨 provider 를 처음 성공한 순서대로 모아 둔다 — 요약에 사용 모델을 적는다
+	const used = new Map<string, string>();
 
 	return {
 		promptBudget: providers[0]?.spec.maxPromptChars ?? 0,
+
+		get usedProviders(): string[] {
+			return [...used.values()];
+		},
 
 		get totalUsage(): TokenUsage {
 			return providers.reduce<TokenUsage>(
@@ -101,7 +114,9 @@ export function createProviderChain(deps: ChainDeps): ProviderChain {
 				}
 
 				try {
-					return await job(client, spec);
+					const result = await job(client, spec);
+					used.set(spec.name, describeProvider(spec));
+					return result;
 				} catch (error) {
 					const errorClass = classifyError(error);
 					attempts.push({ provider: spec.name, errorClass });
