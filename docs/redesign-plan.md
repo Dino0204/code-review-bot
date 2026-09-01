@@ -208,10 +208,12 @@ providers:
   - name: openrouter
     api: openai-completions
     baseUrl: https://openrouter.ai/api/v1
-    model: qwen/qwen3-coder:free
+    model: z-ai/glm-5.2:free
     apiKey: ${OPENROUTER_API_KEY}
     maxPromptChars: 100000
     timeoutMs: 120000
+    contextWindow: 256000
+    maxOutputTokens: 230400
 
   - name: mistral
     api: mistral-conversations
@@ -237,8 +239,9 @@ pi-ai 레지스트리가 아는 모델이면 생략한다 — `provider:model` �
 
 - `gemini-2.5-flash` — Gemini API 요금 문서의 무료 등급 목록에 있다. pi-ai 레지스트리에도
   있어 컨텍스트 1,048,576 / 출력 65,536 을 그대로 받는다.
-- `qwen/qwen3-coder:free` — pi-ai 레지스트리의 OpenRouter `:free` 모델 중 컨텍스트가 가장
-  크다(262,000). pi-ai 는 tool calling 되는 모델만 싣는다.
+- `z-ai/glm-5.2:free` — OpenRouter 모델 API 가 컨텍스트 256,000 / 출력 상한 230,400 을
+  적고 `tools`·`tool_choice` 를 지원 파라미터로 싣는다. pi-ai 레지스트리에는 아직 없어
+  두 크기를 파일에 직접 적었다.
 - `mistral-medium-latest` · `glm-4.7` — pi-ai 레지스트리에 있는 id 다. glm 은 레지스트리가
   코딩 플랜 주소로 들고 있어 여기서 오픈 플랫폼 주소로 덮고 크기도 직접 적었다.
 - **각 provider 의 무료 한도는 콘솔에서 확인한다.** 공개 문서가 수치를 안 적는 곳이 있어
