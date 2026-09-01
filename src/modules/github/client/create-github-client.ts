@@ -21,7 +21,7 @@ const RetryingOctokit = Octokit.plugin(retry);
 export function createGitHubClient(token: string, repo: RepoRef): GitHubClient {
 	const octokit = new RetryingOctokit({
 		auth: token,
-		userAgent: "colombina-code-review-bot",
+		userAgent: "columbina-code-review-bot",
 		retry: { retries: RETRIES },
 		log: {
 			debug: log.debug,

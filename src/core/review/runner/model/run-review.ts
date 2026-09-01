@@ -211,6 +211,7 @@ export async function runReview(
 			promptTokens: chain.totalUsage.prompt_tokens,
 			completionTokens: chain.totalUsage.completion_tokens,
 			chunks: batches,
+			models: chain.usedProviders,
 		},
 		config,
 	);
