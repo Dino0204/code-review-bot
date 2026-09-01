@@ -1,5 +1,10 @@
+import { batchChars, buildBatches } from "@/core/batch/lib/build-batches";
+import { splitBatch } from "@/core/batch/lib/split-batch";
+import type { BatchBudget } from "@/core/batch/model/types";
 import type { BotConfig } from "@/core/config/model/bot-config";
+import type { DiffFile } from "@/core/diff/model/types";
 import type { InlineComment, PullRequestInfo } from "@/core/github/port";
+import { SplitRequiredError } from "@/core/llm/model/errors";
 import { log } from "@/core/ports/logger";
 import type { ReviewContext } from "@/core/review/prompt/model/types";
 import { INLINE_REVIEW_BODY } from "@/core/review/render/consts/marker";
@@ -9,21 +14,34 @@ import { renderReviewSummary } from "@/core/review/render/lib/review-summary";
 import type { Finding } from "@/core/review/schema/model/finding";
 import type { ReviewResult } from "@/core/review/schema/model/review-result";
 import { sourceLength } from "@/core/review/source/lib/render-file-source";
-import { chunkFiles } from "../lib/chunk-files";
 import { mergeResults } from "../lib/merge-results";
 import { dedupeKey, prepareFindings } from "../lib/prepare-findings";
 import { gatherContext } from "./gather-context";
 import { requestReview } from "./request-review";
-import type { ReviewOutcome, RunnerDeps } from "./types";
+import type { ReviewDeps, ReviewOutcome } from "./types";
 import { upsertSummary } from "./upsert-summary";
 
+/**
+ * 리포지토리가 정한 상한과 1순위 provider 의 예산 중 작은 쪽을 쓴다.
+ *
+ * 이 값이 배치 크기이자 프롬프트를 자르는 기준이 된다 — 배치가 작은 provider 로
+ * 내려가면 체인이 다시 쪼개게 하므로, 여기서는 1순위만 보면 된다.
+ */
+function effectiveConfig(config: BotConfig, promptBudget: number): BotConfig {
+	return {
+		...config,
+		maxPromptChars: Math.min(config.maxPromptChars, promptBudget),
+	};
+}
+
 export async function runReview(
-	deps: RunnerDeps,
+	deps: ReviewDeps,
 	pr: PullRequestInfo,
 ): Promise<ReviewOutcome> {
-	const { github, llm, config } = deps;
+	const { github, chain, instructions } = deps;
+	const config = effectiveConfig(deps.config, chain.promptBudget);
 	const { context, skippedFiles, unchangedFiles, hashes } = await gatherContext(
-		deps,
+		{ ...deps, config },
 		pr,
 	);
 
@@ -59,43 +77,80 @@ export async function runReview(
 	}
 
 	const sources = context.sources ?? [];
-	const sourceSizes = new Map(
-		sources.map((source) => [source.path, sourceLength(source)]),
-	);
-	const chunks = chunkFiles(
-		context.diffFiles,
-		config,
-		context.instructions?.content.length ?? 0,
-		sourceSizes,
-	);
-	log.info(`리뷰 청크 ${chunks.length}개`);
+	const budget: BatchBudget = {
+		maxChars: config.maxPromptChars,
+		maxFileChars: config.maxFileChars,
+		instructionChars: context.instructions?.content.length ?? 0,
+		sourceSizes: new Map(
+			sources.map((source) => [source.path, sourceLength(source)]),
+		),
+	};
+
+	// 남은 일감. 배치가 예산에 안 들어가면 반으로 쪼개 이 앞에 다시 넣는다.
+	const pending: DiffFile[][] = buildBatches(context.diffFiles, budget);
+	let batches = pending.length;
+	log.info(`리뷰 배치 ${batches}개`, {
+		batches,
+		promptBudget: budget.maxChars,
+	});
 
 	const results: ReviewResult[] = [];
 	const reviewed = new Set<string>();
 	const failed: string[] = [];
 	let firstError: unknown;
 
-	for (const [index, chunk] of chunks.entries()) {
-		if (chunks.length > 1)
-			log.info(
-				`청크 ${index + 1}/${chunks.length} 리뷰 중 (${chunk.length}개 파일)`,
-			);
-		const paths = new Set(chunk.map((file) => file.path));
-		const chunkContext: ReviewContext = {
+	while (pending.length > 0) {
+		const batch = pending.shift() as DiffFile[];
+		const paths = new Set(batch.map((file) => file.path));
+		const batchContext: ReviewContext = {
 			...context,
-			diffFiles: chunk,
+			config,
+			diffFiles: batch,
 			sources: sources.filter((source) => paths.has(source.path)),
 		};
+
 		try {
-			results.push(await requestReview(deps, chunkContext, config));
+			const result = await chain.run(batchChars(batch, budget), (llm, spec) => {
+				log.info(`배치 ${batch.length}개 파일을 ${spec.name} 에 맡긴다`, {
+					provider: spec.name,
+					model: spec.model,
+					files: batch.length,
+				});
+				return requestReview(
+					{ github, llm, config, instructions },
+					batchContext,
+					config,
+				);
+			});
+			results.push(result);
 			for (const path of paths) reviewed.add(path);
 		} catch (error) {
-			// 청크 하나가 실패해도 나머지는 게시한다 — 다 가진 뒤에 올리려다 아무것도 못 올리는
+			// 어느 provider 예산에도 안 들어가면 쪼개서 다시 시도한다.
+			// 파일 하나까지 쪼갰는데도 안 되면 그 파일만 포기한다 — 요약에 못 본 파일로 적힌다.
+			if (error instanceof SplitRequiredError) {
+				const halves = splitBatch(batch);
+				if (halves) {
+					pending.unshift(...halves);
+					batches++;
+					log.info(`배치가 예산을 넘어 ${batch.length}개를 둘로 쪼갠다`, {
+						files: batch.length,
+					});
+					continue;
+				}
+				firstError ??= error;
+				failed.push(...paths);
+				log.error(
+					`파일 하나가 어느 provider 예산에도 안 들어간다 — ${[...paths].join(", ")}`,
+				);
+				continue;
+			}
+
+			// 배치 하나가 실패해도 나머지는 게시한다 — 다 가진 뒤에 올리려다 아무것도 못 올리는
 			// 것보다, 받은 만큼 올리고 못 본 파일을 마커에 안 남기는 편이 낫다
 			firstError ??= error;
 			failed.push(...paths);
 			log.error(
-				`청크 ${index + 1}/${chunks.length} 실패 — ${error instanceof Error ? error.message : String(error)}`,
+				`배치 실패 (${batch.length}개 파일) — ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
 	}
@@ -153,9 +208,9 @@ export async function runReview(
 			unchangedFiles,
 			failedFiles: failed,
 			repeatedFindings: repeated,
-			promptTokens: llm.totalUsage.prompt_tokens,
-			completionTokens: llm.totalUsage.completion_tokens,
-			chunks: chunks.length,
+			promptTokens: chain.totalUsage.prompt_tokens,
+			completionTokens: chain.totalUsage.completion_tokens,
+			chunks: batches,
 		},
 		config,
 	);
@@ -171,7 +226,7 @@ export async function runReview(
 		posted: true,
 		findings: inline.length + overflow.length,
 		inline: posted,
-		// 실패한 청크의 파일은 마커에 안 남긴다 — 다음 시도에서 그 파일만 다시 묶인다
+		// 실패한 배치의 파일은 마커에 안 남긴다 — 다음 시도에서 그 파일만 다시 묶인다
 		markers: new Map([...hashes].filter(([path]) => reviewed.has(path))),
 		summaryCommentId,
 		failedFiles: failed,

@@ -8,7 +8,7 @@ import { log } from "@/core/ports/logger";
 import { buildFileSource } from "@/core/review/source/lib/build-file-source";
 import type { FileSource } from "@/core/review/source/model/types";
 import { filterFiles } from "../lib/filter-files";
-import type { GatheredContext, RunnerDeps } from "./types";
+import type { GatheredContext, ReviewDeps } from "./types";
 
 /**
  * 리뷰 대상 파일들의 현재 내용을 읽는다.
@@ -55,7 +55,7 @@ function markerless(files: DiffFile[]): Map<string, string> {
 
 /** PR diff를 받아 리뷰 대상 파일만 추린다 */
 export async function gatherContext(
-	deps: RunnerDeps,
+	deps: ReviewDeps,
 	pr: PullRequestInfo,
 ): Promise<GatheredContext> {
 	const { github, config, instructions, markers } = deps;

@@ -1,3 +1,4 @@
+import { SchemaViolationError } from "@/core/llm/model/errors";
 import type { ToolCall } from "@/core/llm/model/types";
 import { log } from "@/core/ports/logger";
 import { FINDING_TOOL, SUMMARY_TOOL } from "@/core/review/prompt/consts/tools";
@@ -8,18 +9,18 @@ import type { ReviewResult } from "@/core/review/schema/model/review-result";
 /**
  * 도구 호출을 리뷰 결과로 모은다.
  *
- * 모델 출력은 신뢰하지 않는다 — 스키마에 맞지 않는 지적은 버리고 나머지는 살린다.
- * 하나가 어긋났다고 리뷰 전체를 잃는 것보다, 검증을 통과한 것만 게시하는 편이 낫다.
+ * 네이티브 tool calling 은 서버가 스키마를 강제하므로, 그러고도 검증에 걸린 지적은
+ * 형식 사고가 아니라 모델이 규격을 어긴 것이다. 그런 응답은 덮지 않고 배치째로
+ * 실패시킨다 — 덮으면 틀린 줄 번호가 그대로 GitHub 까지 가서 422 가 된다.
  */
 export function collectToolCalls(toolCalls: ToolCall[]): ReviewResult {
 	const summaries: string[] = [];
 	const findings: RawFinding[] = [];
-	let malformed = 0;
 	let unknown = 0;
 
 	for (const call of toolCalls) {
 		if (call.name === SUMMARY_TOOL) {
-			const summary = call.arguments["summary"]?.trim();
+			const summary = String(call.arguments["summary"] ?? "").trim();
 			if (summary) summaries.push(summary);
 			continue;
 		}
@@ -30,24 +31,24 @@ export function collectToolCalls(toolCalls: ToolCall[]): ReviewResult {
 		}
 
 		const parsed = findingSchema.safeParse(call.arguments);
-		if (parsed.success) {
-			findings.push(parsed.data);
-			continue;
+		if (!parsed.success) {
+			const issues = parsed.error.issues
+				.slice(0, 3)
+				.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+				.join("; ");
+			throw new SchemaViolationError(
+				`${FINDING_TOOL} 응답이 스키마와 맞지 않다 — ${issues}`,
+			);
 		}
-		malformed++;
-		const issues = parsed.error.issues
-			.slice(0, 3)
-			.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
-			.join("; ");
-		log.warn(`지적 하나가 스키마와 맞지 않아 버렸다 — ${issues}`);
+		findings.push(parsed.data);
 	}
 
 	// 지적이 0건일 때 원인을 가릴 수 있어야 한다 —
-	// 모델이 요약만 낸 것과, 낸 지적이 검증에서 떨어진 것은 서로 다른 문제다.
+	// 모델이 요약만 낸 것과, 아예 도구를 안 부른 것은 서로 다른 문제다.
 	log.info(
 		`도구 호출 ${toolCalls.length}건 — 요약 ${summaries.length}, 지적 ${findings.length}` +
-			(malformed ? `, 형식 오류 ${malformed}` : "") +
 			(unknown ? `, 모르는 도구 ${unknown}` : ""),
+		{ toolCalls: toolCalls.length, findings: findings.length },
 	);
 
 	return { summary: summaries.join("\n\n"), findings };

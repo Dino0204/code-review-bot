@@ -1,5 +1,6 @@
 import type { PullRequestInfo } from "@/core/github/port";
 import { log } from "@/core/ports/logger";
+import { buildReplyMessages } from "@/core/review/prompt/model/reply-messages";
 import { renderThreadReply } from "@/core/review/render/lib/thread-reply";
 import { loadExcerpt } from "./load-excerpt";
 import { requestReply } from "./request-reply";
@@ -10,13 +11,16 @@ import type { ThreadDeps, ThreadOutcome } from "./types";
  *
  * 리뷰와 달리 대상이 diff 전체가 아니라 쓰레드 한 곳이다 — 그 자리의 diff 조각,
  * 현재 파일 내용, 오간 대화만 실어 보낸다. 답은 같은 쓰레드에 답글로 달린다.
+ *
+ * 답변은 배치가 하나뿐인 리뷰와 같다 — 체인이 provider 를 고르고, 실패하면 다음
+ * provider 가 같은 프롬프트를 받는다. 쪼갤 배치가 없으므로 예산을 넘기면 그대로 실패한다.
  */
 export async function answerThread(
 	deps: ThreadDeps,
 	pr: PullRequestInfo,
 	commentId: number,
 ): Promise<ThreadOutcome> {
-	const { github, llm } = deps;
+	const { github, chain, config, instructions } = deps;
 
 	const thread = await github.getReviewThread(pr.number, commentId);
 	if (!thread) {
@@ -31,7 +35,26 @@ export async function answerThread(
 			`${excerpt ? "" : " (파일 발췌 없음)"}`,
 	);
 
-	const { reply, degraded } = await requestReply(deps, pr, thread, excerpt);
+	const messages = buildReplyMessages({
+		config,
+		pr,
+		thread,
+		excerpt,
+		instructions,
+	});
+	const promptChars = messages.reduce(
+		(sum, message) => sum + message.content.length,
+		0,
+	);
+
+	const { reply, degraded } = await chain.run(promptChars, (llm, spec) => {
+		log.info(`쓰레드 답변을 ${spec.name} 에 맡긴다`, {
+			provider: spec.name,
+			model: spec.model,
+		});
+		return requestReply({ llm, config }, messages);
+	});
+
 	await github.replyToReviewComment(
 		pr.number,
 		thread.rootId,
@@ -39,7 +62,7 @@ export async function answerThread(
 	);
 
 	log.info(
-		`#${pr.number} 쓰레드 응답 완료 (토큰 ${llm.totalUsage.total_tokens.toLocaleString()})`,
+		`#${pr.number} 쓰레드 응답 완료 (토큰 ${chain.totalUsage.total_tokens.toLocaleString()})`,
 	);
 	return { replied: true, degraded };
 }

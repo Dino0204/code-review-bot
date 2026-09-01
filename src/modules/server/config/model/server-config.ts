@@ -10,7 +10,8 @@ export interface ServerConfig {
 	webhookSecret: string;
 	githubAppId: string;
 	githubPrivateKey: string;
-	gsmlApiKey: string;
+	/** provider 체인 정의 파일의 경로 */
+	providersFile: string;
 	/** 큐와 리뷰 상태를 담아두는 Redis 주소 */
 	redisUrl: string;
 	/** 리포지토리 설정 파일 위에 얹을 값 — 서버 운영자가 환경변수로 지정한다 */
@@ -38,11 +39,13 @@ const schema = z
 		GITHUB_APP_ID: text,
 		GITHUB_APP_PRIVATE_KEY: text.optional(),
 		GITHUB_APP_PRIVATE_KEY_PATH: text.optional(),
-		GSML_API_KEY: text,
+		PROVIDERS_FILE: text.default("./providers.yml"),
+		// 로거는 DI 밖에서 이 값을 직접 읽는다(`modules/logger.ts`). 여기서는 형식만 잡는다 —
+		// 오타를 넣으면 조용히 text 로 도는 대신 부팅에서 멈춘다.
+		LOG_FORMAT: z.enum(["text", "json"]).default("text"),
 		// compose 안에서는 서비스 이름으로 붙는다. 로컬에서 그냥 띄우면 기본값이 맞는다.
 		REDIS_URL: text.default("redis://127.0.0.1:6379"),
 
-		REVIEWBOT_BASE_URL: text.optional(),
 		REVIEWBOT_LANGUAGE: text.optional(),
 		REVIEWBOT_TRIGGER_PREFIX: text.optional(),
 		REVIEWBOT_MIN_SEVERITY: z.enum(SEVERITIES).optional(),
@@ -72,7 +75,6 @@ type Env = z.infer<typeof schema>;
  */
 function repoOverrides(env: Env): Partial<BotConfig> {
 	const mapped = {
-		baseUrl: env.REVIEWBOT_BASE_URL,
 		language: env.REVIEWBOT_LANGUAGE,
 		triggerPrefix: env.REVIEWBOT_TRIGGER_PREFIX,
 		minSeverity: env.REVIEWBOT_MIN_SEVERITY,
@@ -112,7 +114,7 @@ export const serverConfig = registerAs("server", (): ServerConfig => {
 		webhookSecret: env.GITHUB_WEBHOOK_SECRET,
 		githubAppId: env.GITHUB_APP_ID,
 		githubPrivateKey: privateKey,
-		gsmlApiKey: env.GSML_API_KEY,
+		providersFile: env.PROVIDERS_FILE,
 		redisUrl: env.REDIS_URL,
 		repoOverrides: repoOverrides(env),
 	};

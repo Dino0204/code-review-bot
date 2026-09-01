@@ -1,11 +1,13 @@
 import type { BotConfig } from "@/core/config/model/bot-config";
+import type { ProviderChain } from "@/core/llm/model/chain";
 import type { ReviewState } from "@/core/ports/review-state";
 import type { GitHubApp } from "@/modules/github/app/model/types";
 import type { QueueJob } from "../../queue/model/review-job";
 
 export interface HandlerDeps {
 	app: GitHubApp;
-	gsmlApiKey: string;
+	/** 잡 하나가 쓸 provider 체인을 만든다 — 체인은 잡마다 새로 만든다 */
+	newChain: () => ProviderChain;
 	/** 리포지토리 설정 위에 얹을 값 — 환경변수에서 온다 */
 	repoOverrides: Partial<BotConfig>;
 	/** 어디까지 리뷰했는지 남겨두는 저장소 */

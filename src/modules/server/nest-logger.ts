@@ -18,8 +18,9 @@ function line(message: unknown, params: unknown[]): string {
 /**
  * Nest 프레임워크 로그를 Logger 포트로 흘린다.
  *
- * Nest 기본 로거를 그대로 두면 프레임워크 로그만 형식이 달라진다. 10단계에서 구조화 로그로
- * 바꿀 때도 이 브릿지 덕분에 `modules/logger.ts` 하나만 갈아끼우면 된다.
+ * Nest 기본 로거를 그대로 두면 프레임워크 로그만 형식이 달라진다. 이 브릿지 덕분에
+ * 출력 형식은 `modules/logger.ts` 하나가 정한다 — `LOG_FORMAT=json` 이면 프레임워크
+ * 로그도 같은 JSON 줄로 나간다.
  */
 export const nestLogger: LoggerService = {
 	log: (message: unknown, ...params: unknown[]) =>

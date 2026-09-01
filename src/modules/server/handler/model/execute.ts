@@ -4,10 +4,9 @@ import type { GitHubClient } from "@/core/github/port";
 import { log } from "@/core/ports/logger";
 import { renderError } from "@/core/review/render/lib/error";
 import { runReview } from "@/core/review/runner/model/run-review";
-import type { RunnerDeps } from "@/core/review/runner/model/types";
+import type { ReviewDeps } from "@/core/review/runner/model/types";
 import { answerThread } from "@/core/review/thread/model/answer-thread";
 import { createGitHubClient } from "@/modules/github/client/create-github-client";
-import { createLlmClient } from "@/modules/llm/client";
 import { loadRepoConfig } from "../api/load-repo-config";
 import { loadRepoInstructions } from "../api/load-repo-instructions";
 import { resolveIntent } from "../lib/resolve-intent";
@@ -42,6 +41,8 @@ export async function execute(
 ): Promise<void> {
 	const slug = `${owner}/${repo}`;
 	const prRef = { owner, repo, pr: trigger.pr };
+	// 잡 하나를 관통해 붙는 값들 — 로그를 PR 단위로 모을 수 있어야 한다
+	const job = { owner, repo, pr: trigger.pr, trigger: trigger.kind };
 	const token = await deps.app.installationToken(installationId);
 	const github = createGitHubClient(token, { owner, repo });
 
@@ -56,6 +57,7 @@ export async function execute(
 		if (!trusted) {
 			log.warn(
 				`${slug}: ${trigger.author}(${trigger.association})에게 쓰기 권한이 없어 명령을 무시한다`,
+				{ ...job, association: trigger.association },
 			);
 			return;
 		}
@@ -85,18 +87,18 @@ export async function execute(
 	// 할 일을 정한 뒤에 읽는다 — 무시할 이벤트에 API 쿼터를 쓰지 않는다
 	const instructions = await loadRepoInstructions(github, pr.headSha);
 
-	const llm = createLlmClient({
-		apiKey: deps.gsmlApiKey,
-		baseUrl: config.baseUrl,
-	});
+	// 체인은 잡마다 새로 만든다 — 이번 잡에서 뺀 provider 와 누적 토큰이 다음 잡에
+	// 새어 들면 안 된다. cooldown 은 Redis 에 있어 체인이 바뀌어도 남는다.
+	const chain = deps.newChain();
 
 	try {
 		if (intent.kind === "reply") {
 			log.info(
 				`${slug}#${pr.number} 쓰레드 응답 시작 (코멘트 ${intent.commentId})`,
+				{ ...job, intent: "reply", commentId: intent.commentId },
 			);
 			const outcome = await answerThread(
-				{ github, llm, config, instructions },
+				{ github, chain, config, instructions },
 				pr,
 				intent.commentId,
 			);
@@ -105,16 +107,20 @@ export async function execute(
 			return;
 		}
 
-		log.info(`${slug}#${pr.number} "${pr.title}" 리뷰 시작`);
+		log.info(`${slug}#${pr.number} "${pr.title}" 리뷰 시작`, {
+			...job,
+			intent: "review",
+			incremental: trigger.kind === "pull_request",
+		});
 		// 사람이 부른 리뷰는 처음부터 다시 본다 — 같은 코드를 한 번 더 봐달라는 뜻이다.
 		// 자동 리뷰(푸시·오픈)만 마커를 보고 달라진 파일로 좁힌다.
 		const markers =
 			trigger.kind === "pull_request"
 				? await deps.state.markers(prRef)
 				: undefined;
-		const runnerDeps: RunnerDeps = {
+		const reviewDeps: ReviewDeps = {
 			github,
-			llm,
+			chain,
 			config,
 			instructions,
 			markers,
@@ -122,13 +128,19 @@ export async function execute(
 			summaryCommentId: await deps.state.summaryCommentId(prRef),
 			postedKeys: await deps.state.postedKeys(prRef),
 		};
-		const outcome = await runReview(runnerDeps, pr);
+		const outcome = await runReview(reviewDeps, pr);
 		// 게시까지 끝난 뒤에 남긴다 — 게시에 실패한 파일을 "봤다"고 적으면 영영 안 보게 된다
 		await deps.state.saveMarkers(prRef, outcome.markers);
 		await deps.state.addPostedKeys(prRef, outcome.postedKeys);
 		if (outcome.summaryCommentId !== undefined)
 			await deps.state.setSummaryCommentId(prRef, outcome.summaryCommentId);
-		log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건`);
+		log.info(`${slug}#${pr.number} 리뷰 완료 — 지적 ${outcome.findings}건`, {
+			...job,
+			findings: outcome.findings,
+			inline: outcome.inline,
+			reviewedFiles: outcome.markers.size,
+			failedFiles: outcome.failedFiles.length,
+		});
 
 		// 남은 파일은 재시도에 맡긴다. 여기까지 저장이 끝났으므로 다음 시도는 못 본 파일만
 		// 다시 묶고, 이미 단 코멘트도 다시 달지 않는다.
@@ -140,7 +152,10 @@ export async function execute(
 		// 실패 사실을 사람이 부른 자리에서 바로 볼 수 있게 남긴다.
 		// 재시도가 남았으면 알리지 않는다 — 어차피 다시 도는 일을 코멘트로 세 번 알릴 이유가 없다.
 		const message = error instanceof Error ? error.message : String(error);
-		log.error(`${slug}#${pr.number} 실패: ${message}`);
+		log.error(`${slug}#${pr.number} 실패: ${message}`, {
+			...job,
+			lastAttempt,
+		});
 		if (lastAttempt)
 			await reportFailure(github, trigger, intent, message).catch(
 				(commentError: unknown) =>

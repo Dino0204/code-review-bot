@@ -1,10 +1,12 @@
 import { Inject, Module, type OnApplicationShutdown } from "@nestjs/common";
 import { Redis } from "ioredis";
+import type { CooldownStore } from "@/core/ports/cooldown";
 import { log } from "@/core/ports/logger";
 import type { ReviewState } from "@/core/ports/review-state";
+import { createRedisCooldowns } from "@/modules/state/redis-cooldowns";
 import { createRedisReviewState } from "@/modules/state/redis-review-state";
 import { type ServerConfig, serverConfig } from "../config/model/server-config";
-import { REDIS_CLIENT, REVIEW_STATE } from "./consts/tokens";
+import { COOLDOWNS, REDIS_CLIENT, REVIEW_STATE } from "./consts/tokens";
 
 /**
  * 리뷰 상태 저장소를 꽂는 자리.
@@ -24,8 +26,13 @@ import { REDIS_CLIENT, REVIEW_STATE } from "./consts/tokens";
 			inject: [REDIS_CLIENT],
 			useFactory: (redis: Redis): ReviewState => createRedisReviewState(redis),
 		},
+		{
+			provide: COOLDOWNS,
+			inject: [REDIS_CLIENT],
+			useFactory: (redis: Redis): CooldownStore => createRedisCooldowns(redis),
+		},
 	],
-	exports: [REVIEW_STATE],
+	exports: [REVIEW_STATE, COOLDOWNS],
 })
 export class StateModule implements OnApplicationShutdown {
 	constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
