@@ -190,10 +190,12 @@ PR이 closed/merged 되면 `rb:*:{owner}/{repo}#{pr}` 를 지운다. TTL은 그 
 providers:
   - name: google
     api: google-generative-ai
-    model: gemini-2.5-flash
+    model: gemini-3.6-flash
     apiKey: ${GOOGLE_API_KEY}
     maxPromptChars: 400000
     timeoutMs: 120000
+    contextWindow: 1048576
+    maxOutputTokens: 65536
 
   - name: glm
     api: openai-completions
@@ -237,8 +239,9 @@ pi-ai 레지스트리가 아는 모델이면 생략한다 — `provider:model` �
 
 **모델을 고른 근거**(추측으로 적지 않는다):
 
-- `gemini-2.5-flash` — Gemini API 요금 문서의 무료 등급 목록에 있다. pi-ai 레지스트리에도
-  있어 컨텍스트 1,048,576 / 출력 65,536 을 그대로 받는다.
+- `gemini-3.6-flash` — pi.dev 모델 카탈로그가 컨텍스트 1,048,576 / 출력 65,536 을 적는다.
+  설치된 pi-ai 판의 레지스트리에는 아직 없어(최신은 `gemini-3.1-*`) 두 크기를 파일에 직접
+  적었다. 무료 등급 포함 여부는 Google AI Studio 콘솔에서 확인한다.
 - `z-ai/glm-5.2:free` — OpenRouter 모델 API 가 컨텍스트 256,000 / 출력 상한 230,400 을
   적고 `tools`·`tool_choice` 를 지원 파라미터로 싣는다. pi-ai 레지스트리에는 아직 없어
   두 크기를 파일에 직접 적었다.

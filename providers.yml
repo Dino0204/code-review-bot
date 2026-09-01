@@ -7,16 +7,19 @@
 # 키 하나가 없다고 봇이 안 뜨면 안 된다. 전부 비면 부팅이 실패한다.
 #
 # `contextWindow` / `maxOutputTokens` 는 pi-ai 레지스트리가 아는 모델이면 비워도 된다.
-# 모르는 모델(아래 glm 과 openrouter 가 그렇다)만 적는다.
+# 설치된 pi-ai 판이 모르는 모델(아래 google·glm·openrouter 가 그렇다)만 적는다.
 
 providers:
-  # 무료 한도가 가장 넉넉하고 컨텍스트가 크다 — 1순위가 배치 크기를 정한다
+  # 무료 한도가 가장 넉넉하고 컨텍스트가 크다 — 1순위가 배치 크기를 정한다.
+  # gemini-3.6-flash 는 설치된 pi-ai 판의 레지스트리에는 아직 없어 두 크기를 직접 적는다.
   - name: google
     api: google-generative-ai
-    model: gemini-2.5-flash
+    model: gemini-3.6-flash
     apiKey: ${GOOGLE_API_KEY}
     maxPromptChars: 400000
     timeoutMs: 120000
+    contextWindow: 1048576
+    maxOutputTokens: 65536
 
   # z.ai 오픈 플랫폼. 코딩 플랜 엔드포인트(/api/coding/paas/v4)와는 다른 주소다
   - name: glm
