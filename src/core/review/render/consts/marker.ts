@@ -1,4 +1,4 @@
-export const BOT_MARKER = "<!-- colombina-code-review-bot -->";
+export const BOT_MARKER = "<!-- columbina-code-review-bot -->";
 
 /**
  * 인라인 코멘트를 담아 보내는 리뷰의 본문.

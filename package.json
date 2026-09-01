@@ -1,5 +1,5 @@
 {
-	"name": "colombina-code-review-bot",
+	"name": "columbina-code-review-bot",
 	"version": "0.1.0",
 	"description": "GitHub Pull Request 코드 리뷰 봇 — gemini-code-assist 대체용",
 	"private": true,

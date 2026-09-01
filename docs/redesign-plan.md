@@ -330,7 +330,7 @@ mergeResults(results: ReviewResult[]): ReviewResult
 
 | # | 작업 | 배포 가능 | 검증 |
 |---|---|---|---|
-| 0 | 이 문서 추가, CLAUDE.md 삭제, 봇 이름을 colombina로 변경 | — | 완료 |
+| 0 | 이 문서 추가, CLAUDE.md 삭제, 봇 이름을 columbina로 변경 | — | 완료 |
 | 1 | `src/core/` · `src/modules/` 분리, Logger 포트 도입 | 예 | 완료 — typecheck, build, biome |
 | 2 | hunk 해시 + `complete` 플래그 추가 | 예 | 완료 — 스모크 확인. **큰 PR 로 실제 확인 필요** |
 | 3 | tsc 빌드 전환(CJS), Dockerfile 멀티스테이지 조정 | 예 | 완료 — 빌드·실행 확인. **도커 이미지 빌드는 미검증**(로컬 데몬 꺼짐, CI 가 확인) |
